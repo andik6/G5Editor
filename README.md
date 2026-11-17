@@ -1,5 +1,7 @@
 # G5 Editor
 
+Version 0.2.0 · see [CHANGELOG.md](CHANGELOG.md)
+
 A native macOS app (Apple Silicon and Intel) for the **ZOOM G5** guitar multi-effects pedal: the original G5, not the G5n.
 
 Zoom's own *Edit&Share* app is a 32-bit Intel program, so it no longer runs on modern Macs, not even under Rosetta. G5 Editor replaces it. It talks to the pedal over USB MIDI, and the pedal is class-compliant, so no driver is needed.
@@ -28,10 +30,24 @@ Zoom's own *Edit&Share* app is a 32-bit Intel program, so it no longer runs on m
 - **Import Backup…** (⌘I) opens `.syx` files from elsewhere.
 - Every write is verified by reading the patch back. Each SysEx message carries a CRC-32 checksum that the pedal checks.
 
+### Real-gear looks
+- Each amp is drawn in the colours of the amp it models: tolex, control panel and grille cloth (blackface Fender, Vox diamond grille, gold-panel Marshall, Orange, Mesa diamond plate…).
+- Pedals modelled on a known stompbox use that pedal's colours (TS-style green, DS-style orange, Big Muff silver…).
+- Only colours are used, no logos. Everything else keeps its category colour.
+
+![Amps and pedals](docs/gallery.png)
+
+### Tuner
+- Chromatic tuner reading the G5's USB audio: toolbar tuning-fork button or ⇧⌘T.
+- Shows a needle (±50 cents), the note and octave, frequency, and highlights the matching string in standard tuning.
+- A4 can be set from 435 to 445 Hz. Optionally mutes the monitor while tuning.
+- Uses two-pass YIN pitch detection. On synthetic test tones from B1 to E6 it is accurate to within 0.7 cents.
+
 ### Monitor: hear the G5 through the Mac
 - Plays the G5's USB audio (guitar plus effects) through any audio output on the Mac, such as a USB sound card, the Mac speakers or a monitor. No extra cables or headphones on the pedal are needed.
 - Converts the sample rate (the G5 runs at 44.1 kHz; most interfaces run at 48 kHz) and corrects for clock drift. Round-trip delay is about **13 ms**.
 - Toolbar button or ⇧⌘M; output picker, volume and level meter are in the sidebar.
+- For listening on speakers or headphones, set the G5's **GLOBAL → OUTPUT** to **DIRECT**. The setting also changes the USB signal, and COMBO/STACK modes sound wrong on full-range speakers.
 - Remembers its last state, and turns itself back on when the app starts or the pedal is plugged in again.
 
 ## Requirements
@@ -57,7 +73,8 @@ To install it, copy `dist/G5 Editor.app` to `/Applications`. The app is signed o
 - **Tempo-synced values:** the note names (delay times or rates set to note values) come from Zoom's other pedals and haven't been checked on the G5's display.
 - **Z-Pedal "CUSTOM":** the pedal-range settings can't be edited yet.
 - **Descriptions:** only about 30 effects have one.
-- **Drums:** whether the rhythm or looper sound is sent over USB (and so reaches the monitor) hasn't been confirmed.
+- **Drums:** the G5 doesn't send its rhythm patterns over USB, so the monitor can't play them.
+- **Tuner:** tested with synthetic tones; testing with a real guitar is still pending.
 
 ## Project layout
 
@@ -67,6 +84,7 @@ To install it, copy `dist/G5 Editor.app` to `/Applications`. The app is signed o
 | `Sources/G5Editor` | SwiftUI app |
 | `Sources/g5tool` | Command-line tool used to reverse-engineer and test the protocol |
 | `tools/make_catalog.py`, `tools/embed_catalog.py` | Regenerate the effect catalog |
+| `tools/make_icon.swift` | Draws the app icon (`Resources/AppIcon.png`) |
 | `docs/PROTOCOL.md` | The G5 SysEx protocol and patch format, as worked out for this project |
 | `docs/DEVELOPMENT.md` | Architecture, testing hooks, developer tools |
 

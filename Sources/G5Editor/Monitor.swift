@@ -6,7 +6,10 @@ final class MonitorController: ObservableObject {
     @Published private(set) var isOn = false
     @Published private(set) var outputs: [AudioDevice] = []
     @Published var outputUID: String { didSet { UserDefaults.standard.set(outputUID, forKey: "monitorOutput"); if isOn { restart() } } }
-    @Published var volume: Double { didSet { monitor?.gain = Float(volume * volume); UserDefaults.standard.set(volume, forKey: "monitorVolume") } }
+    @Published var volume: Double { didSet { applyGain(); UserDefaults.standard.set(volume, forKey: "monitorVolume") } }
+    /// Set by the tuner: silences the monitor without turning it off.
+    @Published var tunerMuted = false { didSet { applyGain() } }
+    private func applyGain() { monitor?.gain = tunerMuted ? 0 : Float(volume * volume) }
     @Published private(set) var level: Float = 0
     @Published private(set) var info = ""
     @Published var errorText: String?
@@ -39,9 +42,9 @@ final class MonitorController: ObservableObject {
         stop(userInitiated: false)
         do {
             let m = try AudioMonitor(input: input, output: output)
-            m.gain = Float(volume * volume)
             try m.start()
             monitor = m
+            applyGain()
             isOn = true
             info = String(format: "%.1f → %.1f kHz", m.inputRate / 1000, m.outputRate / 1000)
             log("monitor on: \(input.name) -> \(output.name)")

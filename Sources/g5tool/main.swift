@@ -1,5 +1,6 @@
 import Foundation
 import G5Core
+import CoreAudio
 
 let args = Array(CommandLine.arguments.dropFirst())
 let dev = G5Device()
@@ -34,6 +35,95 @@ if args.first == "monitor" {
                      t, s.inputFrames, s.outputFrames, s.underruns, s.skips, s.inputPeak, s.outputPeak, s.latencyMs))
     }
     m.stop(); exit(0)
+}
+if args.first == "tunertest" {
+    // Offline: synthetic guitar-like tones at known pitches, reports the detector's error in cents.
+    let sr = 44100.0
+    let det = PitchDetector(sampleRate: sr)
+    var worst = 0.0, misses = 0
+    let strings: [(String, Double)] = [("B1", 61.74), ("D2", 73.42), ("E2", 82.41), ("A2", 110.0), ("D3", 146.83), ("G3", 196.0), ("B3", 246.94), ("E4", 329.63), ("E5", 659.26), ("E6", 1318.51)]
+    for (name, f0) in strings {
+        for detune in [-23.0, 0, 7.0] {
+            let f = f0 * pow(2, detune / 1200)
+            for kind in ["sine", "guitar", "weakfund"] {
+                let x: [Float] = (0..<det.windowSize).map { i in
+                    let t = Double(i) / sr
+                    switch kind {
+                    case "sine": return Float(0.3 * sin(2 * .pi * f * t))
+                    case "guitar":   // 1/n harmonics with a little inharmonicity, slight noise
+                        var v = Double.random(in: -0.003...0.003)
+                        for h in 1...12 {
+                            let k = Double(h), stretch = (1 + 1e-4 * k * k).squareRoot() / (1 + 1e-4).squareRoot()   // real-string inharmonicity, f1 exact
+                            v += 0.25 / k * sin(2 * Double.pi * f * k * stretch * t + k)
+                        }
+                        return Float(v)
+                    default:         // fundamental much weaker than the 2nd/3rd harmonics (bridge pickup, distortion)
+                        let w = 2 * Double.pi * f * t
+                        let v: Double = 0.05 * sin(w) + 0.3 * sin(2 * w + 1) + 0.25 * sin(3 * w + 2)
+                        return Float(v)
+                    }
+                }
+                guard let r = det.detect(x) else { print("MISS \(name) \(kind) \(detune)"); misses += 1; continue }
+                let err = 1200 * log2(r.freq / f)
+                worst = max(worst, abs(err))
+                if abs(err) > 2 { print(String(format: "%@ %@ detune %+.0f: got %.2f Hz (err %+.1f cents)", name, kind, detune, r.freq, err)) }
+            }
+        }
+    }
+    let n = NoteReading(freq: 329.63 * pow(2, 7.0 / 1200))
+    print(String(format: "worst error %.2f cents, misses %d; 329.63 Hz +7c -> %@%d %+.1f", worst, misses, n.name, n.octave, n.cents))
+    exit(0)
+}
+if args.first == "tuner" {
+    // tuner <seconds> : live note readings from the G5 USB input
+    guard let inp = CoreAudioDevices.zoomInput() else { print("no ZOOM audio input"); exit(1) }
+    let tap = AudioInputTap(device: inp); try! tap.start()
+    let det = PitchDetector(sampleRate: tap.sampleRate)
+    for _ in 0..<((Int(args.dropFirst().first ?? "10") ?? 10) * 4) {
+        Thread.sleep(forTimeInterval: 0.25)
+        if let r = det.detect(tap.latest(det.windowSize)) {
+            let n = NoteReading(freq: r.freq)
+            print(String(format: "%7.2f Hz  %@%d  %+5.1f cents  clarity %.2f", r.freq, n.name, n.octave, n.cents, r.clarity))
+        } else { print("  –") }
+    }
+    exit(0)
+}
+if args.first == "noise" {
+    // noise <seconds> : captures the G5 USB input and prints per-second level, hum and hiss content
+    guard let inp = CoreAudioDevices.zoomInput() else { print("no ZOOM audio input"); exit(1) }
+    let rate = CoreAudioDevices.sampleRate(inp.id)
+    let secs = Int(args.dropFirst().first ?? "10") ?? 10
+    let total = Int(rate) * secs
+    let buf = UnsafeMutablePointer<Float>.allocate(capacity: total); var n = 0
+    let lock = NSLock()
+    var proc: AudioDeviceIOProcID?
+    AudioDeviceCreateIOProcIDWithBlock(&proc, inp.id, nil) { _, inData, _, _, _ in
+        let b = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inData))[0]
+        let ch = Int(b.mNumberChannels), p = b.mData!.assumingMemoryBound(to: Float.self)
+        let frames = Int(b.mDataByteSize) / (4 * ch)
+        lock.lock(); for i in 0..<frames where n < total { buf[n] = p[i * ch]; n += 1 }; lock.unlock()
+    }
+    AudioDeviceStart(inp.id, proc)
+    while true { Thread.sleep(forTimeInterval: 0.2); lock.lock(); let d = n >= total; lock.unlock(); if d { break } }
+    AudioDeviceStop(inp.id, proc); AudioDeviceDestroyIOProcID(inp.id, proc!)
+    func db(_ x: Double) -> String { String(format: "%6.1f", 20 * log10(max(x, 1e-9))) }
+    func goertzel(_ x: UnsafeBufferPointer<Float>, _ f: Double) -> Double {
+        let w = 2 * Double.pi * f / rate, c = 2 * cos(w); var s1 = 0.0, s2 = 0.0
+        for v in x { let s0 = Double(v) + c * s1 - s2; s2 = s1; s1 = s0 }
+        return sqrt(max(0, s1 * s1 + s2 * s2 - c * s1 * s2)) * 2 / Double(x.count) / sqrt(2)   // RMS of that sine
+    }
+    print("sec   RMS dB  peak dB   hiss>3k dB   hum 50/100/150 Hz dB        60/120/180 Hz dB")
+    for k in 0..<secs {
+        let x = UnsafeBufferPointer(start: buf + k * Int(rate), count: Int(rate))
+        let rms = sqrt(x.reduce(0.0) { $0 + Double($1 * $1) } / Double(x.count))
+        let peak = Double(x.map(abs).max() ?? 0)
+        // crude high-pass: first difference emphasises >3 kHz content
+        var hp = 0.0; for i in 1..<x.count { let d = Double(x[i] - x[i-1]); hp += d * d }
+        let hiss = sqrt(hp / Double(x.count)) / 2
+        let h = [50.0, 100, 150, 60, 120, 180].map { db(goertzel(x, $0)) }
+        print(String(format: "%2d", k + 1), db(rms), " ", db(peak), "   ", db(hiss), "     ", h[0...2].joined(separator: " "), "     ", h[3...5].joined(separator: " "))
+    }
+    exit(0)
 }
 func hex(_ b: [UInt8]) -> String { b.map { String(format: "%02X", $0) }.joined(separator: " ") }
 do {

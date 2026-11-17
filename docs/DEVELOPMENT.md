@@ -21,15 +21,18 @@ G5Core
  ├─ PatchData        bit-level patch model (units, params, level, footswitch, name, CRC, messages)
  ├─ Backup           .syx files, read-all with retries
  ├─ Catalog          effect types / params from the embedded effects.json (EffectsData.swift)
- └─ AudioMonitor     HAL IOProcs: G5 input → ring buffer → AudioConverter → chosen output
+ ├─ AudioMonitor     HAL IOProcs: G5 input → ring buffer → AudioConverter → chosen output
+ └─ Pitch            YIN pitch detector, note maths, AudioInputTap (G5 input → ring buffer)
 
 G5Editor (SwiftUI)
  ├─ AppModel         connection, jobs, editing session, coalesced param sends, 2 s pedal poll
  ├─ ContentView      sidebar (device, monitor, patches, backups), BackupView
  ├─ EditorView       patch header, signal chain, unit panel
  ├─ Cards / Knob     stompbox, amp and knob drawing
+ ├─ Looks            colours of the real pedals and amps each effect models
  ├─ EffectBrowser    category grid
- └─ Monitor          MonitorController + sidebar section
+ ├─ Monitor          MonitorController + sidebar section
+ └─ Tuner            TunerController (25 Hz detection, median smoothing) + needle view
 ```
 
 - **Pedal I/O:** every call goes through one serial `DispatchQueue` in `AppModel`, so MIDI requests never overlap.
@@ -49,6 +52,8 @@ The app has two environment variables for testing without clicking through the U
 | Variable | Effect |
 |---|---|
 | `G5_SNAPSHOT=/path/prefix` | About 14 s after launch, renders the window to `prefix-editor.png`, `prefix-amp.png` and `prefix-browser.png` |
+| `G5_GALLERY=/path.png` | Renders every amp and every pedal that has a real-product colour scheme into one image, then quits |
+| `G5_TUNERSHOT=/path.png` | Renders the tuner with sample readings (flat, in tune, idle), then quits |
 | `G5_SELFTEST=1` | Runs a scripted edit session on patch 1 (knob, on/off, move, type change, rename, level), checks the pedal after each step, then reverts and checks the stored patch equals the original |
 
 Log lines go to stderr with the prefix `[G5]`.
@@ -59,6 +64,9 @@ Log lines go to stderr with the prefix `[G5]`.
 |---|---|---|
 | `selftest <backup.syx>` | no (offline) | Rebuilds every patch from decoded data and compares bytes |
 | `monitor <sec> [output]` | no | Runs the audio monitor and prints flow stats every second |
+| `noise <sec>` | no | Records the G5's USB input; prints level, hiss and 50/60 Hz hum each second |
+| `tuner <sec>` | no | Live pitch readings from the G5's USB input |
+| `tunertest` | no (offline) | Pitch-detector accuracy on synthetic tones; prints the worst error in cents |
 | `backup` | no | Full backup to `~/Documents/G5 Backups` |
 | `scan [from] [to]` | no | Lists stored patches |
 | `raw "<hex>" …` | depends | Sends raw MIDI and prints the replies |
@@ -71,6 +79,22 @@ Log lines go to stderr with the prefix `[G5]`.
 | `restore1 <syx> <slot>` | yes | Restores one slot from a backup |
 
 The commands that write to the pedal restore what they changed, but take a backup first anyway.
+
+## Tuner
+Pitch detection is in `Sources/G5Core/Pitch.swift`.
+1. **First pass:** YIN on a 1.6 kHz low-passed window (about 4.6k samples at 44.1 kHz).
+2. **Second pass:** YIN again after a 6th-order low-pass at 1.45 × the first estimate. Overtones on real strings are slightly sharp (inharmonicity), and this stops them pulling the reading sharp. Without it, the low strings read 4–17 cents sharp in testing.
+
+`g5tool tunertest` must stay under 1 cent worst-case.
+
+## Versioning
+- The project uses [semantic versioning](https://semver.org). The version lives in `VERSION`.
+- `build-app.sh` writes it to `CFBundleShortVersionString`, and the git commit count to `CFBundleVersion`.
+- To release:
+  1. Update `VERSION` and `CHANGELOG.md`.
+  2. Commit, then tag `vX.Y.Z`.
+  3. Push with `--tags`.
+  4. Optionally create a GitHub release with the zipped app.
 
 ## Regenerating the effect catalog
 The old Edit&Share payload isn't in the repository. Extract the G5 resource folder from `E_Edit_Share_Mac_2.zip`, then:

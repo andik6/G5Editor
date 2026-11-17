@@ -12,6 +12,7 @@ final class SidebarState: ObservableObject {
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var monitor: MonitorController
+    @EnvironmentObject var tuner: TunerController
     @StateObject private var ui = SidebarState()
 
     var body: some View {
@@ -76,6 +77,10 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem {
+                Button { tuner.toggle() } label: { Label("Tuner", systemImage: "tuningfork") }
+                    .help("Tune your guitar (⇧⌘T)")
+            }
+            ToolbarItem {
                 Button { monitor.toggle() } label: {
                     Label(monitor.isOn ? "Monitor On" : "Monitor", systemImage: monitor.isOn ? "headphones.circle.fill" : "headphones")
                         .foregroundStyle(monitor.isOn ? Palette.accent : .primary)
@@ -89,6 +94,7 @@ struct ContentView: View {
                     .help("Save every patch on the G5 to this Mac")
             }
         }
+        .sheet(isPresented: $tuner.isOpen) { TunerView().environmentObject(tuner) }
         .sheet(item: Binding(get: { model.job.map { JobBox(job: $0) } }, set: { _ in })) { box in
             VStack(alignment: .leading, spacing: 12) {
                 Text(box.job.title).font(.headline)

@@ -2,10 +2,13 @@
 # Builds "G5 Editor.app" (Apple Silicon, ad-hoc signed for this Mac) into ./dist
 set -euo pipefail
 cd "$(dirname "$0")"
+VERSION=$(cat VERSION)
+BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 swift build -c release --product G5Editor
 APP="dist/G5 Editor.app"
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/G5Editor "$APP/Contents/MacOS/G5Editor"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -13,14 +16,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>G5 Editor</string>
   <key>CFBundleDisplayName</key><string>G5 Editor</string>
   <key>CFBundleIdentifier</key><string>local.andi.g5editor</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleExecutable</key><string>G5Editor</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict></plist>
 PLIST
 codesign --force --sign - "$APP"
-echo "Built $APP"
+echo "Built $APP $VERSION ($BUILD)"
