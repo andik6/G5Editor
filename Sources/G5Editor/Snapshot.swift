@@ -44,6 +44,15 @@ enum Gallery {
             write(HStack(spacing: 20) { ForEach(0..<views.count, id: \.self) { views[$0] } }.padding(20)
                     .background(Palette.background).environment(\.colorScheme, .dark), to: path)
         }
+        if let path = ProcessInfo.processInfo.environment["G5_MONITORSHOT"] {
+            let states: [(Float, LevelWarning?)] = [(0.3, nil), (1.0, .g5Clipping), (0.7, .monitorClipping)]
+            let views = states.map { l, w -> AnyView in
+                let m = MonitorController(); m.preview(level: l, warning: w)
+                return AnyView(VStack(alignment: .leading) { MonitorSection() }.environmentObject(m).frame(width: 230, alignment: .top).padding(10).background(Palette.panel))
+            }
+            write(HStack(alignment: .top, spacing: 20) { ForEach(0..<views.count, id: \.self) { views[$0] } }.padding(20)
+                    .background(Palette.background).environment(\.colorScheme, .dark), to: path)
+        }
         guard let path = ProcessInfo.processInfo.environment["G5_GALLERY"] else { return }
         let types = EffectCatalog.shared.selectable
         let amps = types.filter(\.amp)

@@ -62,15 +62,34 @@ public enum CoreAudioDevices {
         AudioDevice(id: id, uid: string(id, kAudioDevicePropertyDeviceUID), name: string(id, kAudioObjectPropertyName))
     }
 
-    /// The G5's USB audio input ("ZOOM G Series").
-    public static func zoomInput() -> AudioDevice? {
-        allIDs().first { string($0, kAudioObjectPropertyName).localizedCaseInsensitiveContains("ZOOM") && channels($0, input: true) > 0 }.map(device)
+    /// True for the pedal's own USB audio ("ZOOM G Series"). Deliberately strict: the Zoom meetings app
+    /// installs a virtual "ZoomAudioDevice" that must never be mistaken for the G5.
+    static func isG5(_ name: String) -> Bool {
+        name.uppercased().hasPrefix("ZOOM G")
     }
 
-    /// Every device that can play sound, except the G5 itself.
+    /// Every audio device, in Core Audio's order (for diagnostics).
+    public static func all() -> [(device: AudioDevice, inputs: Int, outputs: Int)] {
+        allIDs().map { (device($0), channels($0, input: true), channels($0, input: false)) }
+    }
+
+    /// The G5's USB audio input ("ZOOM G Series").
+    public static func zoomInput() -> AudioDevice? {
+        allIDs().first { isG5(string($0, kAudioObjectPropertyName)) && channels($0, input: true) > 0 }.map(device)
+    }
+
+    /// Every device that can play sound, except the G5 itself and Zoom's virtual meeting device.
     public static func outputs() -> [AudioDevice] {
         allIDs().filter { channels($0, input: false) > 0 }.map(device)
-            .filter { !$0.name.localizedCaseInsensitiveContains("ZOOM") }
+            .filter { !isG5($0.name) && !$0.name.localizedCaseInsensitiveContains("ZoomAudioDevice") }
+    }
+
+    /// False once a device has been unplugged or has stopped working.
+    public static func isAlive(_ id: AudioDeviceID) -> Bool {
+        var addr = address(kAudioDevicePropertyDeviceIsAlive)
+        var alive: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &alive) == noErr && alive != 0
     }
 
     public static func defaultOutputID() -> AudioDeviceID? {
@@ -79,6 +98,13 @@ public enum CoreAudioDevices {
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &id) == noErr, id != 0 else { return nil }
         return id
+    }
+
+    /// Changes a device's nominal sample rate (as Audio MIDI Setup does).
+    public static func setSampleRate(_ id: AudioDeviceID, _ rate: Double) -> Bool {
+        var addr = address(kAudioDevicePropertyNominalSampleRate)
+        var r = rate
+        return AudioObjectSetPropertyData(id, &addr, 0, nil, UInt32(MemoryLayout<Float64>.size), &r) == noErr
     }
 
     static func setBufferSize(_ id: AudioDeviceID, _ frames: UInt32) {

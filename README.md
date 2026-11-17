@@ -1,12 +1,23 @@
 # G5 Editor
 
-Version 0.2.0 · see [CHANGELOG.md](CHANGELOG.md)
+Version 0.2.1 · see [CHANGELOG.md](CHANGELOG.md)
 
 A native macOS app (Apple Silicon and Intel) for the **ZOOM G5** guitar multi-effects pedal: the original G5, not the G5n.
 
 Zoom's own *Edit&Share* app is a 32-bit Intel program, so it no longer runs on modern Macs, not even under Rosetta. G5 Editor replaces it. It talks to the pedal over USB MIDI, and the pedal is class-compliant, so no driver is needed.
 
 ![G5 Editor](docs/screenshot.png)
+
+## Download & install
+1. Download **`G5-Editor-<version>.dmg`** from the [latest release](https://github.com/andik6/G5Editor/releases/latest).
+2. Open it and drag **G5 Editor** onto **Applications**.
+3. **First launch:** the app isn't signed with an Apple Developer ID, so macOS blocks it the first time.
+   - **macOS 15 Sequoia and later:** try to open it once, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
+   - **macOS 14 Sonoma:** right-click (Control-click) the app, choose **Open**, then **Open** again.
+4. Connect the G5 by USB. When macOS asks for **microphone** access, allow it. The app uses it only to hear the G5's USB audio for the monitor and the tuner; nothing is recorded or sent anywhere.
+5. Click **Back Up** before you start editing.
+
+Runs on macOS 14 or later, on both Apple Silicon and Intel Macs.
 
 ## Features
 
@@ -49,6 +60,8 @@ Zoom's own *Edit&Share* app is a 32-bit Intel program, so it no longer runs on m
 - Toolbar button or ⇧⌘M; output picker, volume and level meter are in the sidebar.
 - For listening on speakers or headphones, set the G5's **GLOBAL → OUTPUT** to **DIRECT**. The setting also changes the USB signal, and COMBO/STACK modes sound wrong on full-range speakers.
 - Remembers its last state, and turns itself back on when the app starts or the pedal is plugged in again.
+- **Reconnects by itself** if audio stops, a device is unplugged and re-plugged, a sample rate changes, or the Mac wakes from sleep.
+- **Clip warning:** the meter's dot turns red when the signal clips. A hint says whether to lower the G5's MASTER LEVEL or patch level, or the monitor volume. The volume is shown in percent; 100% plays the G5 at its own level.
 
 ## Requirements
 - macOS 14 Sonoma or later
@@ -58,11 +71,13 @@ Zoom's own *Edit&Share* app is a 32-bit Intel program, so it no longer runs on m
 ## Build & run
 
 ```sh
-./build-app.sh                 # release build → dist/G5 Editor.app (ad-hoc signed)
+./build-app.sh                 # release build for this Mac → dist/G5 Editor.app (ad-hoc signed)
+./build-app.sh --universal     # Apple Silicon + Intel
+./make-dmg.sh                  # universal build packed as dist/G5-Editor-<version>.dmg
 open "dist/G5 Editor.app"
 ```
 
-To install it, copy `dist/G5 Editor.app` to `/Applications`. The app is signed only ad-hoc, so on another Mac you may need to right-click it and choose **Open** the first time.
+To install a local build, copy `dist/G5 Editor.app` to `/Applications`.
 
 ## Safety notes
 - **Back up before editing.** One click, and it lets you undo anything.

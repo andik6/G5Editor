@@ -18,6 +18,22 @@ if args.first == "selftest" {
     print(t.name, t.params.map { "\($0.name)=\($0.display(d.param(4, $0.prm)))" }, EffectCatalog.shared.types.count)
     exit(0)
 }
+if args.first == "devices" {
+    // devices : every Core Audio device, and which ones the monitor would use
+    for d in CoreAudioDevices.all() {
+        print(String(format: "%4d  in %d  out %d  ", d.device.id, d.inputs, d.outputs) + d.device.name + "  [" + d.device.uid + "]")
+    }
+    print("G5 input:", CoreAudioDevices.zoomInput()?.name ?? "none")
+    print("outputs:", CoreAudioDevices.outputs().map(\.name))
+    exit(0)
+}
+if args.first == "setrate" {
+    // setrate <device-name> <Hz> : change a device's sample rate (used to test the monitor's recovery)
+    guard args.count > 2, let rate = Double(args[2]),
+          let d = CoreAudioDevices.all().first(where: { $0.device.name.localizedCaseInsensitiveContains(args[1]) })?.device else { print("usage: setrate <name> <Hz>"); exit(1) }
+    print(d.name, CoreAudioDevices.sampleRate(d.id), "->", rate, CoreAudioDevices.setSampleRate(d.id, rate) ? "ok" : "failed")
+    exit(0)
+}
 if args.first == "monitor" {
     // monitor <seconds> [output-name] : G5 USB audio -> output device, prints flow stats each second
     guard let inp = CoreAudioDevices.zoomInput() else { print("no ZOOM audio input"); exit(1) }

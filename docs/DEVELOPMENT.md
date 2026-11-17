@@ -45,15 +45,24 @@ G5Editor (SwiftUI)
 - **Sample rate:** the output side resamples with `AudioConverter` (high quality).
 - **Drift:** an underrun re-primes the buffer and raises its target fill by 64 frames. If the input runs ahead, the reader skips back to the target fill.
 - **Buffers:** both devices request 128-frame buffers.
+- **Recovery (`MonitorController`):** while monitoring is wanted (`monitorOn`), the route is torn down and rebuilt when:
+  - the input or output frame counter stops growing for 1.5 s;
+  - a device stops being alive or changes its nominal sample rate (checked once a second);
+  - a device with a different ID appears in the device list;
+  - the Mac wakes from sleep.
+  - Automatic starts that fail retry every 3 s without an alert.
+- **Clip check:** an input peak ≥ 0.989 (−0.1 dBFS) means the G5 itself clips. An output peak > 1.0 with a clean input means the monitor gain is too high. The warning stays up for 3 s after the last clip.
+- **Device matching:** the G5 is the input whose name starts with "ZOOM G". Zoom's virtual "ZoomAudioDevice" must never match.
 
 ## Testing hooks
-The app has two environment variables for testing without clicking through the UI:
+The app has environment variables for testing without clicking through the UI:
 
 | Variable | Effect |
 |---|---|
 | `G5_SNAPSHOT=/path/prefix` | About 14 s after launch, renders the window to `prefix-editor.png`, `prefix-amp.png` and `prefix-browser.png` |
 | `G5_GALLERY=/path.png` | Renders every amp and every pedal that has a real-product colour scheme into one image, then quits |
 | `G5_TUNERSHOT=/path.png` | Renders the tuner with sample readings (flat, in tune, idle), then quits |
+| `G5_MONITORSHOT=/path.png` | Renders the monitor sidebar section: normal, G5 clipping, monitor clipping; then quits |
 | `G5_SELFTEST=1` | Runs a scripted edit session on patch 1 (knob, on/off, move, type change, rename, level), checks the pedal after each step, then reverts and checks the stored patch equals the original |
 
 Log lines go to stderr with the prefix `[G5]`.
@@ -64,6 +73,8 @@ Log lines go to stderr with the prefix `[G5]`.
 |---|---|---|
 | `selftest <backup.syx>` | no (offline) | Rebuilds every patch from decoded data and compares bytes |
 | `monitor <sec> [output]` | no | Runs the audio monitor and prints flow stats every second |
+| `devices` | no | Lists every Core Audio device and shows which input/outputs the monitor would use |
+| `setrate <name> <Hz>` | no | Changes a device's sample rate. Used to test the monitor's automatic recovery; set it back afterwards |
 | `noise <sec>` | no | Records the G5's USB input; prints level, hiss and 50/60 Hz hum each second |
 | `tuner <sec>` | no | Live pitch readings from the G5's USB input |
 | `tunertest` | no (offline) | Pitch-detector accuracy on synthetic tones; prints the worst error in cents |
@@ -94,7 +105,9 @@ Pitch detection is in `Sources/G5Core/Pitch.swift`.
   1. Update `VERSION` and `CHANGELOG.md`.
   2. Commit, then tag `vX.Y.Z`.
   3. Push with `--tags`.
-  4. Optionally create a GitHub release with the zipped app.
+  4. Run `./make-dmg.sh` *after* committing, so the build number matches. It makes a universal, ad-hoc signed `dist/G5-Editor-X.Y.Z.dmg`.
+  5. Create the GitHub release and attach the DMG: `gh release create vX.Y.Z dist/G5-Editor-X.Y.Z.dmg --title … --notes …`.
+- Without an Apple Developer ID the app can't be notarized, so users have to allow it once under Privacy & Security. The README explains how.
 
 ## Regenerating the effect catalog
 The old Edit&Share payload isn't in the repository. Extract the G5 resource folder from `E_Edit_Share_Mac_2.zip`, then:
