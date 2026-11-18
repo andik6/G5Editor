@@ -56,7 +56,7 @@ Runs on macOS 14 or later, on both Apple Silicon and Intel Macs.
 
 ### Monitor: hear the G5 through the Mac
 - Plays the G5's USB audio (guitar plus effects) through any audio output on the Mac, such as a USB sound card, the Mac speakers or a monitor. No extra cables or headphones on the pedal are needed.
-- Converts the sample rate (the G5 runs at 44.1 kHz; most interfaces run at 48 kHz) and corrects for clock drift. Round-trip delay is about **13 ms**.
+- Converts the sample rate (the G5 runs at 44.1 kHz; most interfaces run at 48 kHz) and corrects for clock drift. Delay from the G5 to the speakers is about **9 ms** at the default **Low** latency setting. Choose **Normal** or **Safe** in the sidebar if you hear clicks.
 - Toolbar button or ⇧⌘M; output picker, volume and level meter are in the sidebar.
 - For listening on speakers or headphones, set the G5's **GLOBAL → OUTPUT** to **DIRECT**. The setting also changes the USB signal, and COMBO/STACK modes sound wrong on full-range speakers.
 - Remembers its last state, and turns itself back on when the app starts or the pedal is plugged in again.

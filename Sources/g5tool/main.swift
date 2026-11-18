@@ -27,6 +27,17 @@ if args.first == "devices" {
     print("outputs:", CoreAudioDevices.outputs().map(\.name))
     exit(0)
 }
+if args.first == "latency" {
+    // latency : buffer ranges, hidden driver latency and supported rates of the G5 and every output
+    var devs = CoreAudioDevices.outputs().map { ($0, false) }
+    if let g = CoreAudioDevices.zoomInput() { devs.insert((g, true), at: 0) }
+    for (d, isIn) in devs {
+        let sr = CoreAudioDevices.sampleRate(d.id), hw = CoreAudioDevices.hardwareLatency(d.id, input: isIn), br = CoreAudioDevices.bufferRange(d.id)
+        print(String(format: "%@ (%@) %.0f Hz  buffer %d..%d  hidden %d frames = %.2f ms  rates %@", d.name, isIn ? "in" : "out", sr, br.min, br.max, hw, Double(hw) / sr * 1000,
+                     CoreAudioDevices.availableRates(d.id).map { String(Int($0)) }.joined(separator: ",")))
+    }
+    exit(0)
+}
 if args.first == "setrate" {
     // setrate <device-name> <Hz> : change a device's sample rate (used to test the monitor's recovery)
     guard args.count > 2, let rate = Double(args[2]),
@@ -41,8 +52,9 @@ if args.first == "monitor" {
     print("outputs:", outs.map(\.name))
     let want = args.count > 2 ? args[2] : "HD USB"
     guard let out = outs.first(where: { $0.name.localizedCaseInsensitiveContains(want) }) else { print("no output", want); exit(1) }
-    let m = try! AudioMonitor(input: inp, output: out)
-    print("\(inp.name) \(m.inputRate) Hz -> \(out.name) \(m.outputRate) Hz")
+    let frames = args.count > 3 ? UInt32(args[3]) ?? 32 : 32
+    let m = try! AudioMonitor(input: inp, output: out, bufferFrames: frames, margin: args.count > 4 ? Int(args[4]) ?? 64 : 64)
+    print("\(inp.name) \(m.inputRate) Hz -> \(out.name) \(m.outputRate) Hz  buffers \(m.bufferFrames)  target \(m.targetFrames)")
     try! m.start()
     for t in 1...(Int(args[1]) ?? 5) {
         Thread.sleep(forTimeInterval: 1)

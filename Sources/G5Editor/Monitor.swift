@@ -21,11 +21,25 @@ enum LevelWarning: Equatable {
     }
 }
 
+/// IO buffer size for the monitor: smaller is less delay, larger survives a busy or older Mac.
+enum MonitorLatency: Int, CaseIterable, Identifiable {
+    case low = 32, normal = 64, safe = 128
+    var id: Int { rawValue }
+    var label: String {
+        switch self {
+        case .low: "Low"
+        case .normal: "Normal"
+        case .safe: "Safe"
+        }
+    }
+}
+
 /// Owns the live "hear the G5 through another sound card" route and its settings.
 final class MonitorController: ObservableObject {
     @Published private(set) var isOn = false
     @Published private(set) var outputs: [AudioDevice] = []
     @Published var outputUID: String { didSet { UserDefaults.standard.set(outputUID, forKey: "monitorOutput"); if isOn { restart() } } }
+    @Published var latency: MonitorLatency { didSet { UserDefaults.standard.set(latency.rawValue, forKey: "monitorBuffer"); if isOn { restart() } } }
     @Published var volume: Double { didSet { applyGain(); UserDefaults.standard.set(volume, forKey: "monitorVolume") } }
     /// Set by the tuner: silences the monitor without turning it off.
     @Published var tunerMuted = false { didSet { applyGain() } }
@@ -48,12 +62,14 @@ final class MonitorController: ObservableObject {
     private var lastFrames = (input: 0, output: 0)
     private var stalledTicks = 0
     private var ticks = 0
+    private var lastUnderruns = 0
     private var warningUntil = Date.distantPast
 
     init() {
         let d = UserDefaults.standard
         outputUID = d.string(forKey: "monitorOutput") ?? ""
         volume = d.object(forKey: "monitorVolume") as? Double ?? 1
+        latency = MonitorLatency(rawValue: d.integer(forKey: "monitorBuffer")) ?? .low
         wanted = d.bool(forKey: "monitorOn")
         refreshDevices()
         CoreAudioDevices.observeDeviceList { [weak self] in self?.refreshDevices() }
@@ -66,7 +82,7 @@ final class MonitorController: ObservableObject {
     }
 
     /// Debug rendering only.
-    func preview(level: Float, warning: LevelWarning?) { isOn = true; info = "On · 13 ms delay"; self.level = level; self.warning = warning }
+    func preview(level: Float, warning: LevelWarning?) { isOn = true; info = "On · ~9 ms delay"; self.level = level; self.warning = warning }
 
     var selectedOutput: AudioDevice? { outputs.first { $0.uid == outputUID } }
 
@@ -91,13 +107,13 @@ final class MonitorController: ObservableObject {
         guard let output = selectedOutput else { return fail("Choose an output for the monitor.") }
         stop(userInitiated: false)
         do {
-            let m = try AudioMonitor(input: input, output: output)
+            let m = try AudioMonitor(input: input, output: output, bufferFrames: UInt32(latency.rawValue))
             try m.start()
             monitor = m
             applyGain()
             isOn = true
             reconnecting = false
-            lastFrames = (0, 0); stalledTicks = 0; ticks = 0
+            lastFrames = (0, 0); stalledTicks = 0; ticks = 0; lastUnderruns = 0
             info = String(format: "%.1f → %.1f kHz", m.inputRate / 1000, m.outputRate / 1000)
             log("monitor on: \(input.name) -> \(output.name)")
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
@@ -140,7 +156,11 @@ final class MonitorController: ObservableObject {
         guard let m = monitor else { return }
         let s = m.takeStats()
         level = max(s.inputPeak, level * 0.8)                     // smooth fall-off for the meter
-        info = String(format: "On · %.0f ms delay", s.latencyMs)
+        info = String(format: "On · ~%.0f ms delay", s.latencyMs)
+        if s.underruns > lastUnderruns {
+            lastUnderruns = s.underruns
+            if ticks > 20 { log("monitor: underrun #\(s.underruns) at \(latency.label) latency") }   // ignore start-up
+        }
         ticks += 1
 
         // Watchdog: both sides must keep moving. A device that silently stopped (sleep, a USB hiccup,
@@ -221,6 +241,12 @@ struct MonitorSection: View {
                     ForEach(monitor.outputs) { Text($0.name).tag($0.uid) }
                 }
                 .controlSize(.small)
+                Picker("Latency", selection: $monitor.latency) {
+                    ForEach(MonitorLatency.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .help("Low has the least delay. If you hear clicks or dropouts, choose Normal or Safe.")
                 HStack(spacing: 6) {
                     Image(systemName: "speaker.fill").font(.caption2).foregroundStyle(.secondary)
                     Slider(value: $monitor.volume, in: 0...1.4).controlSize(.small)

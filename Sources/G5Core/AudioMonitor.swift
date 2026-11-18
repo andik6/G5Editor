@@ -107,6 +107,48 @@ public enum CoreAudioDevices {
         return AudioObjectSetPropertyData(id, &addr, 0, nil, UInt32(MemoryLayout<Float64>.size), &r) == noErr
     }
 
+    static func uint32(_ id: AudioObjectID, _ sel: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope) -> Int {
+        var addr = address(sel, scope)
+        var v: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &v) == noErr ? Int(v) : 0
+    }
+
+    /// Hidden latency the driver adds on top of the IO buffer, in frames:
+    /// device latency + safety offset + the first stream's latency.
+    public static func hardwareLatency(_ id: AudioDeviceID, input: Bool) -> Int {
+        let scope = input ? kAudioObjectPropertyScopeInput : kAudioObjectPropertyScopeOutput
+        var stream = 0
+        var addr = address(kAudioDevicePropertyStreams, scope)
+        var size: UInt32 = 0
+        if AudioObjectGetPropertyDataSize(id, &addr, 0, nil, &size) == noErr, size >= 4 {
+            var ids = [AudioStreamID](repeating: 0, count: Int(size) / 4)
+            if AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &ids) == noErr {
+                stream = uint32(ids[0], kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal)
+            }
+        }
+        return uint32(id, kAudioDevicePropertyLatency, scope) + uint32(id, kAudioDevicePropertySafetyOffset, scope) + stream
+    }
+
+    /// Sample rates the device supports (lower bounds of its ranges).
+    public static func availableRates(_ id: AudioDeviceID) -> [Double] {
+        var addr = address(kAudioDevicePropertyAvailableNominalSampleRates)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &addr, 0, nil, &size) == noErr, size > 0 else { return [] }
+        var ranges = [AudioValueRange](repeating: AudioValueRange(), count: Int(size) / MemoryLayout<AudioValueRange>.size)
+        guard AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &ranges) == noErr else { return [] }
+        return ranges.map(\.mMinimum)
+    }
+
+    /// Smallest and largest IO buffer the device accepts, in frames.
+    public static func bufferRange(_ id: AudioDeviceID) -> (min: Int, max: Int) {
+        var addr = address(kAudioDevicePropertyBufferFrameSizeRange)
+        var r = AudioValueRange()
+        var size = UInt32(MemoryLayout<AudioValueRange>.size)
+        AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &r)
+        return (Int(r.mMinimum), Int(r.mMaximum))
+    }
+
     static func setBufferSize(_ id: AudioDeviceID, _ frames: UInt32) {
         var addr = address(kAudioDevicePropertyBufferFrameSize)
         var f = frames
@@ -152,7 +194,10 @@ public final class AudioMonitor {
     private let lock: UnsafeMutablePointer<os_unfair_lock>
     private var primed = false
     private var target = 0                         // ring fill (frames) the output aims to keep
+    private var baseTarget = 0                     // the starting target; never shrink below it
+    private var calmFrames = 0                     // output frames since the last underrun or shrink
     private let maxTarget = 4096
+    private let hiddenLatency: Double              // driver latency + safety offsets of both devices, seconds
 
     private var converter: AudioConverterRef?
     private let convIn: UnsafeMutablePointer<Float>, convOut: UnsafeMutablePointer<Float>
@@ -161,7 +206,9 @@ public final class AudioMonitor {
     private var stats = Stats()
     private var running = false
 
-    public init(input: AudioDevice, output: AudioDevice, bufferFrames: UInt32 = 128) throws {
+    /// `bufferFrames` is the IO buffer asked of both devices: 32 gives the lowest delay, 128 the most headroom.
+    /// `margin` is extra ring fill kept in reserve; it grows by itself after an underrun and slowly shrinks back.
+    public init(input: AudioDevice, output: AudioDevice, bufferFrames: UInt32 = 32, margin: Int = 64) throws {
         self.input = input; self.output = output
         inputRate = CoreAudioDevices.sampleRate(input.id)
         outputRate = CoreAudioDevices.sampleRate(output.id)
@@ -174,7 +221,10 @@ public final class AudioMonitor {
         CoreAudioDevices.setBufferSize(input.id, bufferFrames)
         CoreAudioDevices.setBufferSize(output.id, bufferFrames)
         let inBuf = CoreAudioDevices.bufferSize(input.id), outBuf = CoreAudioDevices.bufferSize(output.id)
-        target = inBuf + Int(Double(outBuf) * inputRate / outputRate) + 64
+        target = inBuf + Int(Double(outBuf) * inputRate / outputRate) + margin
+        baseTarget = target
+        hiddenLatency = Double(CoreAudioDevices.hardwareLatency(input.id, input: true)) / inputRate
+            + Double(CoreAudioDevices.hardwareLatency(output.id, input: false)) / outputRate
 
         func fmt(_ rate: Double) -> AudioStreamBasicDescription {
             AudioStreamBasicDescription(mSampleRate: rate, mFormatID: kAudioFormatLinearPCM,
@@ -222,9 +272,12 @@ public final class AudioMonitor {
     public func takeStats() -> Stats {
         os_unfair_lock_lock(lock); defer { os_unfair_lock_unlock(lock) }
         var s = stats
-        s.latencyMs = Double(target) / inputRate * 1000
-            + Double(CoreAudioDevices.bufferSize(input.id)) / inputRate * 1000
-            + Double(CoreAudioDevices.bufferSize(output.id)) / outputRate * 1000
+        // Everything between the G5's USB output and the DAC: ring fill, both IO buffers and the drivers' own latency.
+        // (The G5's internal processing and the DAC itself add a little more and can't be read.)
+        s.latencyMs = (Double(target) / inputRate
+            + Double(CoreAudioDevices.bufferSize(input.id)) / inputRate
+            + Double(CoreAudioDevices.bufferSize(output.id)) / outputRate
+            + hiddenLatency) * 1000
         stats.inputPeak = 0; stats.outputPeak = 0
         return s
     }
@@ -291,6 +344,12 @@ public final class AudioMonitor {
         } else if fill < needIn {
             primed = false; play = false; stats.underruns += 1
             target = min(maxTarget, target + 64)            // underrun: keep a little more in reserve
+            calmFrames = 0
+        }
+        // After a calm minute, give back some of the reserve an earlier hiccup added.
+        calmFrames += outFrames
+        if target > baseTarget && calmFrames > Int(outputRate) * 60 {
+            target = max(baseTarget, target - 16); calmFrames = 0
         }
         if play && fill > target + needIn + 1024 {          // input clock ahead: skip back to target
             readPos = writePos - target; stats.skips += 1
@@ -330,6 +389,11 @@ public final class AudioMonitor {
         stats.outputFrames += outFrames; stats.outputPeak = max(stats.outputPeak, peak)
         os_unfair_lock_unlock(lock)
     }
+
+    /// IO buffer sizes actually in effect (input, output), in frames.
+    public var bufferFrames: (input: Int, output: Int) { (CoreAudioDevices.bufferSize(input.id), CoreAudioDevices.bufferSize(output.id)) }
+    /// Current ring-buffer fill the output aims for, in input frames.
+    public var targetFrames: Int { os_unfair_lock_lock(lock); defer { os_unfair_lock_unlock(lock) }; return target }
 
     fileprivate var scratchCapacity: Int { scratchFrames }
     fileprivate var converterInput: UnsafeMutablePointer<Float> { convIn }

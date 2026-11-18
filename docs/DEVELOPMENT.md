@@ -44,7 +44,8 @@ G5Editor (SwiftUI)
 - **Signal path:** input and output run as separate Core Audio IOProcs on their own devices. A stereo ring buffer, guarded by an `os_unfair_lock`, joins them.
 - **Sample rate:** the output side resamples with `AudioConverter` (high quality).
 - **Drift:** an underrun re-primes the buffer and raises its target fill by 64 frames. If the input runs ahead, the reader skips back to the target fill.
-- **Buffers:** both devices request 128-frame buffers.
+- **Buffers:** both devices request 32-frame buffers by default (the sidebar's Latency setting: 32/64/128). The ring keeps one input buffer, one output buffer and a 64-frame margin in reserve. Each underrun adds 64 frames, and after 60 s without one the reserve shrinks by 16 frames, never below the start value.
+- **Latency budget (G5 → HD USB at 32 frames):** ring 125 frames (2.8 ms), IO buffers 0.7 + 0.7 ms, driver latency and safety offsets 3.1 ms (G5) + 2.1 ms (HD USB), about 9.4 ms in total. The G5's internal processing and the DAC itself add a little more that can't be read. HD USB only supports 48/96/192 kHz, so resampling from 44.1 kHz can't be avoided; its own delay is negligible.
 - **Recovery (`MonitorController`):** while monitoring is wanted (`monitorOn`), the route is torn down and rebuilt when:
   - the input or output frame counter stops growing for 1.5 s;
   - a device stops being alive or changes its nominal sample rate (checked once a second);
@@ -72,7 +73,8 @@ Log lines go to stderr with the prefix `[G5]`.
 | Command | Writes to pedal? | Purpose |
 |---|---|---|
 | `selftest <backup.syx>` | no (offline) | Rebuilds every patch from decoded data and compares bytes |
-| `monitor <sec> [output]` | no | Runs the audio monitor and prints flow stats every second |
+| `monitor <sec> [output] [buffer] [margin]` | no | Runs the audio monitor and prints flow stats every second (defaults: HD USB, 32 frames, 64 margin) |
+| `latency` | no | Buffer ranges, hidden driver latency and supported sample rates of the G5 and every output |
 | `devices` | no | Lists every Core Audio device and shows which input/outputs the monitor would use |
 | `setrate <name> <Hz>` | no | Changes a device's sample rate. Used to test the monitor's automatic recovery; set it back afterwards |
 | `noise <sec>` | no | Records the G5's USB input; prints level, hiss and 50/60 Hz hum each second |

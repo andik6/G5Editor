@@ -2,6 +2,19 @@
 
 All notable changes to G5 Editor. Versions follow [semantic versioning](https://semver.org).
 
+## [Unreleased]
+
+### Changed
+- **Lower monitor latency:** about 9 ms instead of about 18 ms on G5 → HD USB.
+  - IO buffers are now 32 frames instead of 128. Tested for 2 minutes, and under full CPU load on all cores, with no dropouts.
+  - New **Latency** setting in the sidebar: Low (32), Normal (64) or Safe (128), for busy or older Macs.
+  - Reserve added after an underrun now shrinks back after a calm minute, instead of staying for the rest of the session.
+- **Honest delay readout:** the monitor's delay now includes the drivers' own latency and safety offsets. These added about 5 ms that weren't shown before.
+
+### Added
+- `g5tool latency`: buffer ranges, hidden driver latency and supported sample rates for the G5 and each output.
+- `g5tool monitor <sec> [output] [buffer] [margin]`, for latency experiments.
+
 ## [0.2.1] - 2026-11-17
 
 ### Added
