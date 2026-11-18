@@ -2,9 +2,9 @@
 
 Version 0.2.1 · see [CHANGELOG.md](CHANGELOG.md)
 
-A native macOS app (Apple Silicon and Intel) for the **ZOOM G5** guitar multi-effects pedal: the original G5, not the G5n.
+**A Zoom G5 editor for modern macOS: a free, open-source alternative to Zoom Edit&Share.** It runs on macOS 14 Sonoma, 15 Sequoia and later, on Apple Silicon (M1–M4) and Intel Macs. It is for the original **ZOOM G5** guitar multi-effects pedal, not the G5n.
 
-Zoom's own *Edit&Share* app is a 32-bit Intel program, so it no longer runs on modern Macs, not even under Rosetta. G5 Editor replaces it. It talks to the pedal over USB MIDI, and the pedal is class-compliant, so no driver is needed.
+Zoom's own *Edit&Share* app is a 32-bit Intel program, so it no longer runs on modern Macs, not even under Rosetta. G5 Editor replaces it: edit patches, back up and restore all 297 patches as `.syx`, tune, and hear the G5's USB audio through your Mac. It talks to the pedal over USB MIDI, and the pedal is class-compliant, so no driver is needed.
 
 ![G5 Editor](docs/screenshot.png)
 
@@ -102,6 +102,9 @@ To install a local build, copy `dist/G5 Editor.app` to `/Applications`.
 | `tools/make_icon.swift` | Draws the app icon (`Resources/AppIcon.png`) |
 | `docs/PROTOCOL.md` | The G5 SysEx protocol and patch format, as worked out for this project |
 | `docs/DEVELOPMENT.md` | Architecture, testing hooks, developer tools |
+
+## License
+G5 Editor is released under the [MIT License](LICENSE).
 
 ## Disclaimer
 This is an independent project. It is not affiliated with or endorsed by ZOOM Corporation. "ZOOM" and "G5" are trademarks of ZOOM Corporation.
