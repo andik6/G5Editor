@@ -22,6 +22,7 @@ G5Core
  ├─ Backup           .syx files, read-all with retries
  ├─ Catalog          effect types / params from the embedded effects.json (EffectsData.swift)
  ├─ AudioMonitor     HAL IOProcs: G5 input → ring buffer → AudioConverter → chosen output
+ ├─ BankSpec         3-patch bank files (effect and knob names): validate, apply to the pedal, describe, catalog reference for the AI
  └─ Pitch            YIN pitch detector, note maths, AudioInputTap (G5 input → ring buffer)
 
 G5Editor (SwiftUI)
@@ -32,6 +33,7 @@ G5Editor (SwiftUI)
  ├─ Looks            colours of the real pedals and amps each effect models
  ├─ EffectBrowser    category grid
  ├─ Monitor          MonitorController + sidebar section
+ ├─ Patcher          AI Sound Patcher: ClaudeCodeProvider, PatcherController, chat panel and preview
  └─ Tuner            TunerController (25 Hz detection, median smoothing) + needle view
 ```
 
@@ -55,6 +57,12 @@ G5Editor (SwiftUI)
 - **Clip check:** an input peak ≥ 0.989 (−0.1 dBFS) means the G5 itself clips. An output peak > 1.0 with a clean input means the monitor gain is too high. The warning stays up for 3 s after the last clip.
 - **Device matching:** the G5 is the input whose name starts with "ZOOM G". Zoom's virtual "ZoomAudioDevice" must never match.
 
+### AI Sound Patcher
+- **Provider:** `ClaudeCodeProvider` runs the user's `claude` CLI: `-p <message> --output-format stream-json --verbose --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch --strict-mcp-config --append-system-prompt <prompt>`, plus `--resume <session>` after the first turn. The working directory is `~/Library/Application Support/G5 Editor/Sound Patcher`. `CLAUDE_CODE_*` variables are removed so a copy launched from a Claude Code session doesn't act as a child session. Tool-use events become the progress line ("Searching the web: …").
+- **Prompt:** the system prompt holds the G5's rules, the bank JSON format and `BankSpec.catalogReference()` (about 18k characters; `g5tool catalogref` prints it). Each user message is prefixed with the target bank and its current contents, read from the pedal just before sending (`BankSpec(describing:)`).
+- **Reply handling:** `BankSpec.extract` takes the last ```json block. `validate()` errors are sent back automatically, at most twice.
+- **Writing:** `AppModel.applyBank` runs as a job: full backup, `Resolved.apply`, read-back of the three slots. Undo restores those slots from that backup with the normal restore path.
+
 ## Testing hooks
 The app has environment variables for testing without clicking through the UI:
 
@@ -64,6 +72,7 @@ The app has environment variables for testing without clicking through the UI:
 | `G5_GALLERY=/path.png` | Renders every amp and every pedal that has a real-product colour scheme into one image, then quits |
 | `G5_TUNERSHOT=/path.png` | Renders the tuner with sample readings (flat, in tune, idle), then quits |
 | `G5_MONITORSHOT=/path.png` | Renders the monitor sidebar section: normal, G5 clipping, monitor clipping; then quits |
+| `G5_PATCHERSHOT=/path.png` with `G5_PATCHERSPEC=bank.json` | Renders Sound Patcher chat messages with that bank as a proposal, then quits |
 | `G5_SELFTEST=1` | Runs a scripted edit session on patch 1 (knob, on/off, move, type change, rename, level), checks the pedal after each step, then reverts and checks the stored patch equals the original |
 
 Log lines go to stderr with the prefix `[G5]`.
@@ -90,6 +99,12 @@ Log lines go to stderr with the prefix `[G5]`.
 | `writeback <slot>` | yes (same data) | Writes a patch back unchanged |
 | `copytest <a> <b>` | yes, then restores | Copies a patch and restores the target |
 | `restore1 <syx> <slot>` | yes | Restores one slot from a backup |
+| `apply <bank.json> <bank> [--dry-run]` | yes (backup first) | Writes a 3-patch bank file and verifies it; `--dry-run` only validates |
+| `show <slot>` | no | A patch's knobs as the pedal displays them |
+| `verifyall <syx>` | no | Lists stored patches that differ from a backup |
+| `alloff <slot>` | yes (saved first) | Stores the patch with every effect off, for noise tests |
+| `catalogref` | no (offline) | The effect reference given to the AI |
+| `describe <syx> <bank>` | no (offline) | A bank from a backup in the bank-file format |
 
 The commands that write to the pedal restore what they changed, but take a backup first anyway.
 

@@ -32,6 +32,18 @@ if args.first == "apply", args.contains("--dry-run") {
         exit(0)
     }
 }
+if args.first == "catalogref" {
+    // catalogref : the effect reference the Sound Patcher gives the AI
+    let r = BankSpec.catalogReference(); print(r); print("\n(\(r.count) characters)"); exit(0)
+}
+if args.first == "describe" {
+    // describe <backup.syx> <bank> : a bank from a backup in the bank-file format (what the AI is shown)
+    let all = try! Backup.read(URL(fileURLWithPath: args[1])); let b = Int(args[2])!
+    let ps = (0..<3).compactMap { i in all.first { $0.slot == (b - 1) * 3 + i }?.patchData }
+    let spec = BankSpec(describing: ps); print(spec.json())
+    if case .failure(let e) = spec.validate() { print("does not validate:\n\(e)") } else { print("validates OK") }
+    exit(0)
+}
 if args.first == "zslots" {
     // zslots <backup.syx> : offline check of PatchData.zSlot across a backup
     let all = try! Backup.read(URL(fileURLWithPath: args[1]))

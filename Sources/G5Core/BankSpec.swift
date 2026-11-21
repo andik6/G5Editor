@@ -22,13 +22,19 @@ public struct BankSpec: Codable {
         public var zpedal: String?          // Z-Pedal slot effect; default ZP-None
         public var effects: [EffectSpec]    // in signal order, up to 8 (the 9th unit is the Z-Pedal slot)
         public var notes: String?
+        public init(name: String, level: Int?, zpedal: String?, effects: [EffectSpec], notes: String?) {
+            self.name = name; self.level = level; self.zpedal = zpedal; self.effects = effects; self.notes = notes
+        }
     }
 
     public struct EffectSpec: Codable {
         public var effect: String
         public var on: Bool?
         public var params: [String: KnobValue]?
+        public init(effect: String, on: Bool?, params: [String: KnobValue]?) { self.effect = effect; self.on = on; self.params = params }
     }
+
+    public init(title: String?, notes: String?, patches: [PatchSpec]) { self.title = title; self.notes = notes; self.patches = patches }
 
     public enum KnobValue: Codable, CustomStringConvertible {
         case number(Int), label(String)
@@ -84,8 +90,10 @@ public struct BankSpec: Codable {
                     }
                     let r: Int?
                     switch v {
-                    case .number(let n): r = n - prm.offset
-                    case .label(let s): r = prm.choices?.firstIndex { $0.caseInsensitiveCompare(s) == .orderedSame }
+                    // Knobs with display labels (e.g. Cent -25…25, Width L50…R50) are matched by label, numbers included:
+                    // the AI writes what the pedal shows, never the raw index.
+                    case .number(let n): r = prm.choices == nil ? n - prm.offset : prm.labelIndex("\(n)")
+                    case .label(let s): r = prm.labelIndex(s)
                     }
                     let limit = prm.syncFrom ?? (prm.max + 1)   // free values only; tempo sync is not offered yet
                     guard let rv = r, rv >= 0, rv < limit else {
@@ -146,5 +154,80 @@ extension BankSpec.Resolved {
                 let t = data.type(u)?.name ?? "?"; return u == z ? "[Z:\(t)]" : (data.isOn(u) ? t : "(\(t))")
             }.joined(separator: " → ") + "  ✓ verified")
         }
+    }
+}
+
+// MARK: - For AI assistants
+
+extension BankSpec {
+
+    /// Describes patches as they are on the pedal, in the same plain terms (used to tell an AI what a bank holds now).
+    /// Empty units are left out; knobs the bank format can't express (tempo sync) are left out too.
+    public init(describing patches: [PatchData], title: String? = nil) {
+        self.title = title; self.notes = nil
+        self.patches = patches.map { p in
+            let z = p.zSlot
+            let effects: [EffectSpec] = (0..<PatchData.unitCount).compactMap { u in
+                guard u != z, let t = p.type(u), !t.isEmpty else { return nil }
+                var params: [String: KnobValue] = [:]
+                for prm in t.editableParams {
+                    let raw = p.param(u, prm.prm)
+                    if let s = prm.syncFrom, raw >= s { continue }
+                    if let c = prm.choices, raw < c.count { params[prm.name] = Int(c[raw]).map { .number($0) } ?? .label(c[raw]) }
+                    else { params[prm.name] = .number(raw + prm.offset) }
+                }
+                return EffectSpec(effect: t.name, on: p.isOn(u), params: params)
+            }
+            return PatchSpec(name: p.name, level: p.level, zpedal: z.flatMap { p.type($0)?.name } ?? "ZP-None", effects: effects, notes: nil)
+        }
+    }
+
+    public func json() -> String {
+        let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return (try? e.encode(self)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+    }
+
+    /// Finds the last ```json … ``` block (or a bare JSON object) in an AI reply and decodes it.
+    public static func extract(from reply: String) -> (spec: BankSpec?, error: String?, prose: String) {
+        var body: Substring?
+        var prose = reply
+        if let fence = reply.range(of: "```json", options: .backwards),
+           let end = reply.range(of: "```", range: fence.upperBound..<reply.endIndex) {
+            body = reply[fence.upperBound..<end.lowerBound]
+            prose = String(reply[..<fence.lowerBound] + reply[end.upperBound...])
+        } else if let a = reply.firstIndex(of: "{"), let b = reply.lastIndex(of: "}"), a < b, reply.contains("\"patches\"") {
+            body = reply[a...b]
+            prose = String(reply[..<a] + reply[reply.index(after: b)...])
+        }
+        guard let body else { return (nil, nil, reply) }
+        do { return (try JSONDecoder().decode(BankSpec.self, from: Data(body.utf8)), nil, prose.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        catch { return (nil, "The bank JSON could not be read: \(error)", prose.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
+    /// Every effect an AI may use, with knob names, ranges (as displayed) and choices. About 6k tokens.
+    public static func catalogReference() -> String {
+        let cat = EffectCatalog.shared
+        var lines: [String] = ["Values are written as the pedal displays them: \"Cent -25…25\" takes -25 to 25 (0 = none), \"Width L50…R50\" takes \"L50\", \"0\", \"R20\" and so on."]
+        var group = ""
+        for t in cat.selectable.sorted(by: { ($0.group.rawValue, $0.name) < ($1.group.rawValue, $1.name) }) {
+            if t.group.rawValue != group {
+                group = t.group.rawValue; lines.append("\n## \(group)")
+                if t.amp, let cab = t.params.first(where: { $0.name == "CAB" })?.choices {
+                    lines.append("Every amp's CAB knob takes one of: \(cab.joined(separator: " | ")).")
+                }
+            }
+            let knobs = t.editableParams.map { p -> String in
+                if t.amp && p.name == "CAB" { return "CAB (cabinet)" }
+                let top = (p.syncFrom ?? (p.max + 1)) - 1
+                if let c = p.choices, p.isChoice { return "\(p.name){\(c.prefix(top + 1).joined(separator: "|"))}" }
+                if let c = p.choices { return "\(p.name) \(c[0])…\(c[min(top, c.count - 1)])" }
+                return "\(p.name) \(p.offset)–\(top + p.offset)"
+            }.joined(separator: "; ")
+            var extra = ""
+            if let c = t.cabinet { extra += " — models: " + (c.components(separatedBy: " · ").last ?? c).replacingOccurrences(of: " cabinet with", with: ",") }
+            else if let d = t.description { extra += " — " + (d.hasSuffix(".") ? String(d.dropLast()) : d) }
+            lines.append("- \(t.name)\(extra). Knobs: \(knobs)")
+        }
+        return lines.joined(separator: "\n")
     }
 }

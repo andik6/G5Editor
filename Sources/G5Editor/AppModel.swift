@@ -180,6 +180,36 @@ final class AppModel: ObservableObject {
         })
     }
 
+    /// Writes a 3-patch bank from the Sound Patcher: full safety backup, write, verify. `done` gets the backup's URL.
+    func applyBank(_ bank: BankSpec.Resolved, spec: BankSpec, bank number: Int, done: @escaping (URL?) -> Void) {
+        var safety: URL?
+        var fresh: [G5Patch] = []
+        let slots = (0..<3).map { (number - 1) * 3 + $0 }
+        run("Writing bank \(number)…", total: Backup.patchCount + bank.patches.count, { d, p in
+            let all = try d.readAll { i, _ in p(i, Backup.patchCount + bank.patches.count) }
+            safety = try Self.save(all)
+            var n = 0
+            try bank.apply(to: d, bank: number) { line in n += 1; log("bank \(number):" + line); p(Backup.patchCount + n, Backup.patchCount + bank.patches.count) }
+            try d.editorMode(true)
+            fresh = try slots.map { try d.readPatch($0) }
+            Self.keep(spec, bank: number)
+        }, done: {
+            for f in fresh { if let i = self.pedalPatches.firstIndex(where: { $0.slot == f.slot }) { self.pedalPatches[i] = f } }
+            self.refreshBackups()
+            done(safety)
+        })
+        if job == nil { done(nil) }
+    }
+
+    /// Keeps a copy of every bank the Sound Patcher wrote, next to the backups.
+    nonisolated private static func keep(_ spec: BankSpec, bank: Int) {
+        let dir = Backup.defaultFolder.appendingPathComponent("Sound Patcher", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        let safe = (spec.title ?? "bank").filter { !"/:\\".contains($0) }.prefix(60)
+        try? Data(spec.json().utf8).write(to: dir.appendingPathComponent("\(f.string(from: Date())) bank \(bank) - \(safe).json"))
+    }
+
     func refreshBackups() {
         let fm = FileManager.default
         let urls = (try? fm.contentsOfDirectory(at: Backup.defaultFolder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []

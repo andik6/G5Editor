@@ -1,0 +1,192 @@
+{
+  "notes" : "Iommi 1970: SG + Laney + Rangemaster. ~163 BPM (quarter 368 ms, dotted 8th 276 ms).",
+  "patches" : [
+    {
+      "effects" : [
+        {
+          "effect" : "ZNR",
+          "on" : true,
+          "params" : {
+            "DETCT" : "GtrIn",
+            "Level" : 100,
+            "THRSH" : 8
+          }
+        },
+        {
+          "effect" : "Booster",
+          "on" : true,
+          "params" : {
+            "Gain" : 65,
+            "Level" : 100,
+            "Tone" : 80
+          }
+        },
+        {
+          "effect" : "MS 1959",
+          "on" : true,
+          "params" : {
+            "Bass" : 30,
+            "CAB" : "MS 1959 4x12",
+            "Gain" : 60,
+            "Level" : 80,
+            "Middl" : 80,
+            "Prese" : 70,
+            "Trebl" : 68,
+            "Tube" : 55
+          }
+        },
+        {
+          "effect" : "Room",
+          "on" : true,
+          "params" : {
+            "Decay" : 5,
+            "Level" : 100,
+            "Mix" : 12,
+            "PreD" : 10,
+            "Tone" : 5
+          }
+        }
+      ],
+      "level" : 100,
+      "name" : "PARA RIFF",
+      "notes" : "Main riff/verse/chorus. Booster = Rangemaster, MS 1959 = Laney substitute, low bass, high mids.",
+      "zpedal" : "ZP-None"
+    },
+    {
+      "effects" : [
+        {
+          "effect" : "ZNR",
+          "on" : true,
+          "params" : {
+            "DETCT" : "GtrIn",
+            "Level" : 100,
+            "THRSH" : 8
+          }
+        },
+        {
+          "effect" : "Booster",
+          "on" : true,
+          "params" : {
+            "Gain" : 65,
+            "Level" : 100,
+            "Tone" : 80
+          }
+        },
+        {
+          "effect" : "MS 1959",
+          "on" : true,
+          "params" : {
+            "Bass" : 34,
+            "CAB" : "MS 1959 4x12",
+            "Gain" : 62,
+            "Level" : 80,
+            "Middl" : 80,
+            "Prese" : 70,
+            "Trebl" : 66,
+            "Tube" : 55
+          }
+        },
+        {
+          "effect" : "Detune",
+          "on" : true,
+          "params" : {
+            "Cent" : 12,
+            "Level" : 100,
+            "Mix" : 35,
+            "PreD" : 15,
+            "Tone" : 7
+          }
+        },
+        {
+          "effect" : "Room",
+          "on" : true,
+          "params" : {
+            "Decay" : 5,
+            "Level" : 100,
+            "Mix" : 12,
+            "PreD" : 10,
+            "Tone" : 5
+          }
+        }
+      ],
+      "level" : 100,
+      "name" : "PARA FAT",
+      "notes" : "Same riff, thin Detune for a double-tracked feel when playing alone.",
+      "zpedal" : "ZP-None"
+    },
+    {
+      "effects" : [
+        {
+          "effect" : "ZNR",
+          "on" : true,
+          "params" : {
+            "DETCT" : "GtrIn",
+            "Level" : 100,
+            "THRSH" : 8
+          }
+        },
+        {
+          "effect" : "Booster",
+          "on" : true,
+          "params" : {
+            "Gain" : 80,
+            "Level" : 105,
+            "Tone" : 75
+          }
+        },
+        {
+          "effect" : "MS 1959",
+          "on" : true,
+          "params" : {
+            "Bass" : 30,
+            "CAB" : "MS 1959 4x12",
+            "Gain" : 68,
+            "Level" : 80,
+            "Middl" : 85,
+            "Prese" : 68,
+            "Trebl" : 65,
+            "Tube" : 60
+          }
+        },
+        {
+          "effect" : "RingMod",
+          "on" : true,
+          "params" : {
+            "Bal" : 30,
+            "Freq" : 22,
+            "Level" : 100,
+            "Tone" : 6
+          }
+        },
+        {
+          "effect" : "Delay",
+          "on" : true,
+          "params" : {
+            "F.B" : 15,
+            "HiDMP" : 6,
+            "Level" : 100,
+            "Mix" : 15,
+            "P-P" : "MONO",
+            "Time" : 276
+          }
+        },
+        {
+          "effect" : "Room",
+          "on" : true,
+          "params" : {
+            "Decay" : 6,
+            "Level" : 100,
+            "Mix" : 15,
+            "PreD" : 10,
+            "Tone" : 5
+          }
+        }
+      ],
+      "level" : 106,
+      "name" : "PARA SOLO",
+      "notes" : "Solo: subtle ring mod (as on the record), hotter boost, light 276 ms delay (not on the record).",
+      "zpedal" : "ZP-None"
+    }
+  ],
+  "title" : "Black Sabbath - Paranoid"
+}

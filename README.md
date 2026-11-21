@@ -34,6 +34,12 @@ Runs on macOS 14 or later, on both Apple Silicon and Intel Macs.
 - Edits play on the pedal live. The G5 auto-saves edit-buffer changes to the active patch after about 5 seconds, the same as turning its own knobs.
 - Changes you make on the pedal itself, including patch switches, show up in the app within about 2 seconds.
 
+### AI Sound Patcher
+- Toolbar ✨ button or ⇧⌘P opens a chat panel. Ask for a song ("Gravity by John Mayer: clean, rhythm and solo") and the AI fills the chosen bank with three patches. Follow-ups ("make the clean brighter") change the bank that's on the pedal now.
+- The AI researches the guitarist's gear and the song's tempo on the web (for delay times) and lists its sources. It doesn't hear the recording, so treat the result as a starting point and tune by ear.
+- You see a preview first. **Write to Bank** backs up all patches, writes the three, verifies them, and can be undone.
+- **Requires [Claude Code](https://claude.com/claude-code)** installed and logged in on the Mac. It runs on your own Claude subscription (Pro or Max), with no extra charge from this app. Without Claude Code the panel just explains how to set it up; the rest of the app works as before.
+
 ### Backup & restore
 - **Back Up Now** (⌘B) reads all 297 patches into a standard `.syx` file in `~/Documents/G5 Backups/`.
 - The backup browser shows each patch's effect chain and marks patches that differ from what's on the pedal.

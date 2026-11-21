@@ -61,6 +61,21 @@ enum Gallery {
             write(HStack(alignment: .top, spacing: 20) { ForEach(0..<views.count, id: \.self) { views[$0] } }.padding(20)
                     .background(Palette.background).environment(\.colorScheme, .dark), to: path)
         }
+        if let path = ProcessInfo.processInfo.environment["G5_PATCHERSHOT"],
+           let spec = try? BankSpec.load(URL(fileURLWithPath: ProcessInfo.processInfo.environment["G5_PATCHERSPEC"] ?? "")),
+           case .success(let res) = spec.validate() {
+            let p = PatcherController(); let m = AppModel()
+            p.messages = [
+                .init(role: .user, text: "Gravity by John Mayer: clean, rhythm and solo"),
+                .init(role: .assistant, text: "**Gravity** (Continuum, 2006): Strat on the neck pickup into a Two-Rock. Delay set from **62 BPM**.\nSources: Rig Rundown, Guitar World interview.",
+                      proposal: .init(spec: spec, resolved: res, bank: 97)),
+                .init(role: .note, text: "Written to bank 97 and verified."),
+                .init(role: .error, text: "Not logged in. Open Terminal, run `claude`, and log in once."),
+            ]
+            write(VStack(alignment: .leading, spacing: 10) { ForEach(p.messages) { MessageView(message: $0) } }
+                    .environmentObject(p).environmentObject(m).frame(width: 380).padding(12)
+                    .background(Palette.background).environment(\.colorScheme, .dark), to: path)
+        }
         guard let path = ProcessInfo.processInfo.environment["G5_GALLERY"] else { return }
         let types = EffectCatalog.shared.selectable
         let amps = types.filter(\.amp)

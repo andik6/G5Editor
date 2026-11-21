@@ -13,6 +13,7 @@ struct ContentView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var monitor: MonitorController
     @EnvironmentObject var tuner: TunerController
+    @EnvironmentObject var patcher: PatcherController
     @StateObject private var ui = SidebarState()
 
     var body: some View {
@@ -75,7 +76,19 @@ struct ContentView: View {
             if case .backup = ui.selection { return }
             if ui.selection != .patch(slot) { ui.selection = .patch(slot) }
         }
+        .inspector(isPresented: $patcher.isOpen) {
+            PatcherPanel().inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+        }
+        .onChange(of: patcher.isOpen) { _, open in
+            if open, let s = model.editing?.slot, patcher.messages.isEmpty { patcher.bank = s / 3 + 1 }
+        }
         .toolbar {
+            ToolbarItem {
+                Button { patcher.toggle() } label: {
+                    Label("Sound Patcher", systemImage: "sparkles").foregroundStyle(patcher.isOpen ? Palette.accent : .primary)
+                }
+                .help("AI Sound Patcher: tones for a song (⇧⌘P)")
+            }
             ToolbarItem {
                 Button { tuner.toggle() } label: { Label("Tuner", systemImage: "tuningfork") }
                     .help("Tune your guitar (⇧⌘T)")

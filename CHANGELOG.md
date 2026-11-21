@@ -4,6 +4,14 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+### Added
+- **AI Sound Patcher** (toolbar ✨ or ⇧⌘P): a chat panel on the right. Ask for the guitar tones of a song and the AI fills one bank (three patches).
+  - Uses **Claude Code** on this Mac (`claude -p`), so requests run on your own Claude subscription. Only its web tools are enabled: it researches the gear and tempo, and can't touch files or run commands.
+  - The AI is given the effect catalog, the G5's rules and what the target bank holds now (read from the pedal, including your own knob tweaks), so follow-ups like "less gain on the rhythm patch" change only that.
+  - Every proposal is validated against the catalog and the Z-Pedal rule. Mistakes go back to the AI automatically (twice at most).
+  - A preview shows each patch's chain, notes and knob settings. Nothing is written until you click **Write to Bank**. The app then backs up every patch, writes and verifies the bank, and offers **Undo**.
+  - Each written bank is also saved as JSON in `~/Documents/G5 Backups/Sound Patcher/`.
+
 ### Fixed
 - **Z-Pedal slot handling.** Each G5 patch has one Z-Pedal slot, which only holds Z-Pedal effects (or ZP-None), and Z-Pedal effects only fit there. This was verified on the pedal; all 297 patches in a backup have exactly one such slot.
   - The app now recognises the slot even when it holds ZP-None. Before, it could send a Z-Pedal effect to another unit, and the pedal then emptied that unit.
@@ -24,6 +32,7 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
 - `g5tool latency`: buffer ranges, hidden driver latency and supported sample rates for the G5 and each output.
 - `g5tool monitor <sec> [output] [buffer] [margin] [gainDb]`, for latency and limiter experiments.
 - **Bank files (AI Sound Patcher, first step):** `g5tool apply <bank.json> <bank>` writes a 3-patch bank described by effect and knob names. It checks everything against the catalog and the Z-Pedal rule first (`--dry-run` checks only), takes a full backup, and verifies each patch by reading it back. Example: `banks/stars-switchfoot.json`.
+- `g5tool catalogref` (the effect reference the AI gets) and `g5tool describe <backup> <bank>` (a bank in the bank-file format).
 - `g5tool show <slot>` (a patch's knobs as the pedal displays them), `g5tool verifyall <backup>`, and `g5tool alloff <slot>` (all effects off, for noise tests; the patch is saved first).
 
 ## [0.2.1] - 2026-11-17

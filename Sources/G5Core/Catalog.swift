@@ -19,6 +19,11 @@ public struct EffectParam: Decodable, Hashable, Identifiable {
         + (2...19).map { "1/4 ×\($0)" }
 
     public var isChoice: Bool { choices != nil && (choices!.count <= 32 || control != "Knob") }
+    /// Raw value for a display label ("-13", "+12", "R20", "Fast"), ignoring case and a leading "+".
+    public func labelIndex(_ label: String) -> Int? {
+        let s = label.hasPrefix("+") ? String(label.dropFirst()) : label
+        return choices?.firstIndex { $0.caseInsensitiveCompare(s) == .orderedSame }
+    }
 
     public func display(_ raw: Int) -> String {
         if let s = syncFrom, raw >= s {
