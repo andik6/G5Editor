@@ -80,6 +80,8 @@ public final class EffectCatalog {
     public let types: [EffectType]
     private let byID: [Int: EffectType]
     public static let emptyID = 107
+    /// "ZP-None": the empty choice for a patch's Z-Pedal slot.
+    public static let zpNoneID = 165
 
     init() {
         types = (try? JSONDecoder().decode([EffectType].self, from: Data(effectsJSON.utf8))) ?? []

@@ -12,13 +12,20 @@ struct EffectBrowser: View {
     let unit: Int
     @StateObject private var st = BrowserState()
 
+    /// The patch's Z-Pedal slot. That unit only takes Z-Pedal effects, and Z-Pedal effects only fit there.
+    private var zSlot: Int? { model.editing?.patch.zSlot }
+    private var isZSlot: Bool { zSlot == unit }
+    private var allowed: [EffectType] {
+        EffectCatalog.shared.selectable.filter { zSlot == nil || $0.zpedal == isZSlot }
+    }
+
     private var groups: [EffectGroup] {
-        let present = Set(EffectCatalog.shared.selectable.map(\.group))
+        let present = Set(allowed.map(\.group))
         return EffectGroup.allCases.filter { present.contains($0) && $0 != .empty }
     }
 
     private var shown: [EffectType] {
-        EffectCatalog.shared.selectable.filter { t in
+        allowed.filter { t in
             !t.isEmpty
                 && (st.group == nil || t.group == st.group)
                 && (st.search.isEmpty || t.name.localizedCaseInsensitiveContains(st.search)
@@ -35,7 +42,8 @@ struct EffectBrowser: View {
         let current = model.editing?.patch.typeID(unit)
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("EFFECT \(unit + 1)").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary).padding(.bottom, 8)
+                Text(isZSlot ? "EFFECT \(unit + 1) · Z-PEDAL SLOT" : "EFFECT \(unit + 1)")
+                    .font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary).padding(.bottom, 8)
                 groupRow(nil, "All", "square.grid.2x2")
                 ForEach(groups) { g in groupRow(g, g.rawValue, g.symbol) }
                 Spacer()
@@ -47,10 +55,19 @@ struct EffectBrowser: View {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Search effects and amps (e.g. Marshall, delay)", text: $st.search).textFieldStyle(.plain)
                     Spacer()
-                    Button("Empty Slot") { model.setType(unit, EffectCatalog.emptyID); dismiss() }
+                    Button(isZSlot ? "ZP-None" : "Empty Slot") {
+                        model.setType(unit, isZSlot ? EffectCatalog.zpNoneID : EffectCatalog.emptyID); dismiss()
+                    }
                     Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
                 .padding(12).background(Palette.panel)
+                if let z = zSlot {
+                    Label(isZSlot ? "This is the patch's Z-Pedal slot. On the G5 it can only hold a Z-Pedal effect."
+                                  : "Z-Pedal effects are only available in this patch's Z-Pedal slot (effect \(z + 1)).",
+                          systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.vertical, 6)
+                }
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 18) {
                         ForEach(shown) { t in

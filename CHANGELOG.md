@@ -4,6 +4,12 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+### Fixed
+- **Z-Pedal slot handling.** Each G5 patch has one Z-Pedal slot, which only holds Z-Pedal effects (or ZP-None), and Z-Pedal effects only fit there. This was verified on the pedal; all 297 patches in a backup have exactly one such slot.
+  - The app now recognises the slot even when it holds ZP-None. Before, it could send a Z-Pedal effect to another unit, and the pedal then emptied that unit.
+  - The effect browser only offers what fits: Z-Pedal effects in the Z-Pedal slot, everything else in the other units, with a short note. "Empty Slot" on the Z-Pedal slot sets ZP-None.
+  - A refused effect change no longer blames DSP power. No DSP limit was hit in tests (8 amps at once were accepted). The message now says what the pedal set instead.
+
 ### Changed
 - **Lower monitor latency:** about 9 ms instead of about 18 ms on G5 → HD USB.
   - IO buffers are now 32 frames instead of 128. Tested for 2 minutes, and under full CPU load on all cores, with no dropouts.

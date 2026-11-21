@@ -271,10 +271,20 @@ final class AppModel: ObservableObject {
     /// Changes the effect type; the pedal fills in default settings, so we read them back.
     func setType(_ unit: Int, _ typeID: Int) {
         guard let e = editing else { return }
+        var typeID = typeID
+        let z = e.patch.zSlot
+        if typeID == EffectCatalog.emptyID && unit == z { typeID = EffectCatalog.zpNoneID }   // "empty" on the Z slot is ZP-None
         let wanted = EffectCatalog.shared.type(typeID)
-        if let w = wanted, w.zpedal, let z = e.patch.zPedalUnit, z != unit {
-            errorText = "Only one Z-Pedal effect fits in a patch. Effect \(z + 1) is already “\(e.patch.type(z)?.name ?? "")”. Change that one first."
-            return
+        // The G5 keeps one Z-Pedal slot per patch; check both directions before the pedal silently rewrites the unit.
+        if let w = wanted, let z {
+            if unit == z && !w.zpedal {
+                errorText = "Effect \(z + 1) is this patch's Z-Pedal slot. On the G5 it can only hold a Z-Pedal effect (choose ZP-None to leave it empty). Pick another effect slot for “\(w.name)”."
+                return
+            }
+            if unit != z && w.zpedal {
+                errorText = "Z-Pedal effects can only go in this patch's Z-Pedal slot, effect \(z + 1) (now “\(e.patch.type(z)?.name ?? "")”). Change that effect instead."
+                return
+            }
         }
         lastLocalEdit = Date()
         mutate { $0.setField(unit * 96 + 1, 8, typeID) }
@@ -288,7 +298,7 @@ final class AppModel: ObservableObject {
                     s.patch = buf; self.editing = s
                     self.updateLibrary(s.slot, buf)
                     if buf.typeID(unit) != typeID {
-                        self.errorText = "The pedal didn't accept “\(wanted?.name ?? "this effect")” here. It is probably out of processing power (the pedal shows DSP FULL). Try a lighter effect or remove another one."
+                        self.errorText = "The pedal didn't accept “\(wanted?.name ?? "this effect")” in effect \(unit + 1) and set it to “\(buf.type(unit)?.name ?? "another effect")” instead."
                     }
                 }
             } catch { DispatchQueue.main.async { self.errorText = error.localizedDescription } }

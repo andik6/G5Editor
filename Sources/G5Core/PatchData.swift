@@ -67,8 +67,10 @@ public struct PatchData: Equatable {
         if (1...9).contains(fs), let newIndex = order.firstIndex(of: fs - 1) { footswitch = newIndex + 1 }
     }
 
-    /// Index of the unit holding a Z-Pedal effect, if any.
-    public var zPedalUnit: Int? { (0..<Self.unitCount).first { type($0)?.zpedal == true && type($0)?.name != "ZP-None" } }
+    /// The patch's Z-Pedal slot: the unit holding a Z-Pedal effect or ZP-None.
+    /// On the G5 this unit only accepts Z-Pedal effects (anything else becomes ZP-None), and a Z-Pedal effect
+    /// sent to any other unit is refused (that unit becomes empty). Verified on the pedal, firmware 1.20.
+    public var zSlot: Int? { (0..<Self.unitCount).first { type($0)?.zpedal == true } }
 
     // MARK: patch-wide
     public var level: Int { get { field(864, 7) } set { setField(864, 7, newValue) } }

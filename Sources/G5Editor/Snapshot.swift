@@ -14,6 +14,14 @@ enum Snapshot {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     save("\(prefix)-browser.png", sheet: true)
                     model.browserUnit = nil
+                    // Browser for the patch's Z-Pedal slot (only Z-Pedal effects should be offered).
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        model.browserUnit = model.editing?.patch.zSlot
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            save("\(prefix)-zbrowser.png", sheet: true)
+                            model.browserUnit = nil
+                        }
+                    }
                 }
             }
         }

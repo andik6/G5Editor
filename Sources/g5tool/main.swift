@@ -18,6 +18,19 @@ if args.first == "selftest" {
     print(t.name, t.params.map { "\($0.name)=\($0.display(d.param(4, $0.prm)))" }, EffectCatalog.shared.types.count)
     exit(0)
 }
+if args.first == "zslots" {
+    // zslots <backup.syx> : offline check of PatchData.zSlot across a backup
+    let all = try! Backup.read(URL(fileURLWithPath: args[1]))
+    var none = 0, zpNone = 0, multi = 0
+    for g in all {
+        guard let p = g.patchData else { continue }
+        let zs = (0..<9).filter { p.type($0)?.zpedal == true }
+        if zs.isEmpty { none += 1 } else if zs.count > 1 { multi += 1 }
+        if let z = p.zSlot, p.typeID(z) == EffectCatalog.zpNoneID { zpNone += 1 }
+    }
+    print("patches \(all.count): without Z slot \(none), with more than one \(multi), Z slot = ZP-None \(zpNone)")
+    exit(0)
+}
 if args.first == "devices" {
     // devices : every Core Audio device, and which ones the monitor would use
     for d in CoreAudioDevices.all() {
@@ -284,6 +297,125 @@ do {
         try dev.editorMode(false)
         Thread.sleep(forTimeInterval: 3)
         print("after leaving editor mode: stored slot 1 changed =", try dev.readPatch(0).data != stored0.data)
+    case "whoami":
+        // whoami <backup.syx> : active slot, its name, and which stored slots differ from the backup
+        let all = try Backup.read(URL(fileURLWithPath: args[1]))
+        try dev.editorMode(true)
+        Thread.sleep(forTimeInterval: 0.3)
+        let a = try dev.activeSlot()
+        print("active slot \(a) (\(a / 3 + 1)-\(a % 3 + 1))")
+        for s in Set([a, 296, 0]).sorted() {
+            let now = try dev.readPatch(s); let was = all.first { $0.slot == s }!
+            print("slot \(s): now '\(now.name)'  backup '\(was.name)'  identical: \(now.data == was.data)")
+        }
+        try dev.editorMode(false)
+    case "verifyall":
+        // verifyall <backup.syx> : reads every stored patch and lists those that differ from the backup
+        let all = try Backup.read(URL(fileURLWithPath: args[1]))
+        let now = try dev.readAll { _, _ in }
+        let diff = now.filter { n in all.first { $0.slot == n.slot }?.data != n.data }
+        print(diff.isEmpty ? "all \(now.count) patches identical to the backup" : "DIFFERENT: " + diff.map { "\($0.slot / 3 + 1)-\($0.slot % 3 + 1) \($0.name)" }.joined(separator: ", "))
+    case "hold":
+        // hold <seconds> <unit>:<typeID> ... : sets types, switches them on, and keeps editor mode for <seconds>
+        // so the pedal's display and sound can be checked. The edit buffer reverts when editor mode ends.
+        try dev.editorMode(true)
+        for a in args.dropFirst(2) {
+            let p = a.split(separator: ":").map { Int($0)! }
+            try dev.sendParam(unit: p[0], prm: 1, value: p[1]); Thread.sleep(forTimeInterval: 0.3)
+            try dev.sendParam(unit: p[0], prm: 0, value: 1); Thread.sleep(forTimeInterval: 0.3)
+        }
+        let b = try dev.readEditBuffer()
+        print("holding:", (0..<9).map { u in "\(u + 1):\(b.type(u)?.name ?? String(b.typeID(u)))\(b.isOn(u) ? "" : "(off)")" }.joined(separator: "  "))
+        Thread.sleep(forTimeInterval: Double(args[1])!)
+        try dev.editorMode(false)
+        print("released")
+    case "settype":
+        // settype <unit> <typeID> [<unit> <typeID> ...] : sets effect types in the edit buffer, prints all 9 unit types after each
+        try dev.editorMode(true)
+        func show(_ label: String) throws {
+            let b = try dev.readEditBuffer()
+            print(label.padding(toLength: 14, withPad: " ", startingAt: 0), (0..<9).map { u in "\(u):\(b.typeID(u))\(b.isOn(u) ? "" : "-")" }.joined(separator: " "))
+        }
+        try show("before")
+        var i = 1
+        while i + 1 < args.count {
+            let u = Int(args[i])!, t = Int(args[i + 1])!
+            try dev.sendParam(unit: u, prm: 1, value: t)
+            Thread.sleep(forTimeInterval: 0.5)
+            try show("u\(u) := \(t)")
+            i += 2
+        }
+        try dev.editorMode(false)
+    case "dspprobe":
+        // dspprobe <slot> <dsp_budget.json> : measures the pedal's per-patch DSP limit on a scratch slot.
+        // Fills units with effects of known firmware budget until the pedal refuses one, then refines with lighter ones.
+        // The slot's edit buffer gets auto-saved by the pedal, so restore the slot from a backup afterwards.
+        let slot = Int(args[1])!
+        let table = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: args[2]))) as! [String: [String: Any]]
+        var budget: [Int: Double] = [:], name: [Int: String] = [:], isAmp: [Int: Bool] = [:]
+        for (k, v) in table {
+            guard let id = Int(k), let cat = v["catalog"] as? String, v["zpedal"] as? Bool == false, v["hidden"] as? Bool == false else { continue }
+            budget[id] = v["budget"] as? Double; name[id] = cat; isAmp[id] = v["amp"] as? Bool ?? false
+        }
+        let none = 107
+        try dev.editorMode(true)
+        try dev.selectPatch(slot)
+        Thread.sleep(forTimeInterval: 0.8)
+        print("probing on slot \(slot) (\(slot / 3 + 1)-\(slot % 3 + 1))")
+        // Sets the type and switches the unit on; the pedal only budgets DSP for enabled effects.
+        func setType(_ unit: Int, _ id: Int) throws -> Bool {
+            try dev.sendParam(unit: unit, prm: 1, value: id)
+            Thread.sleep(forTimeInterval: 0.3)
+            if id != none { try dev.sendParam(unit: unit, prm: 0, value: 1); Thread.sleep(forTimeInterval: 0.3) }
+            let b = try dev.readEditBuffer()
+            return b.typeID(unit) == id && (id == none || b.isOn(unit))
+        }
+        func clear() throws { for u in (0..<9).reversed() { _ = try setType(u, none) } }
+        var accepted: [(Double, String)] = [], refused: [(Double, String)] = []
+        let effects = budget.keys.filter { $0 != none }
+        let nonAmps = effects.filter { !(isAmp[$0] ?? false) }.sorted { budget[$0]! > budget[$1]! }
+        let amps = effects.filter { isAmp[$0] ?? false }.sorted()
+        // Trial plans: start sequences (filled in order), refined at the first refusal with lighter candidates.
+        var plans: [[Int]] = [
+            Array(nonAmps.prefix(9)),                                   // heaviest non-amps
+            Array(nonAmps.dropFirst(9).prefix(9)),                      // next tier
+            Array(nonAmps.dropFirst(20).prefix(9)),
+            [amps[0]] + Array(nonAmps.prefix(8)),                       // one amp + heavy
+            [amps[0], amps[1]] + Array(nonAmps.dropFirst(10).prefix(7)),// two amps
+            Array(amps.prefix(3)),                                      // three amps
+        ]
+        plans.append(Array(nonAmps.reversed().prefix(9)))               // lightest: should always fit
+        if args.count > 3 && args[3] == "extreme" { plans = [Array(amps.prefix(9))] }   // every unit an amp
+        // Units holding a Z-Pedal effect only accept Z-Pedal types, so leave them out.
+        let zIDs = Set(table.compactMap { k, v in (v["zpedal"] as? Bool == true) ? Int(k) : nil } + [165])
+        try clear()
+        let start = try dev.readEditBuffer()
+        let usable = (0..<9).filter { !zIDs.contains(start.typeID($0)) }
+        print("usable units: \(usable.map { $0 + 1 }) (Z-Pedal unit skipped)")
+        for (t, plan) in plans.enumerated() {
+            try clear()
+            var sum = 0.0, chain: [String] = [], n = 0
+            var refusedAt: Int?
+            for id in plan where n < usable.count {
+                if try setType(usable[n], id) { sum += budget[id]!; chain.append(name[id]!); n += 1 }
+                else { refusedAt = id; refused.append((sum + budget[id]!, chain.joined(separator: "+") + " +[\(name[id]!)]")); break }
+            }
+            if let r = refusedAt, n < usable.count {
+                for id in nonAmps where budget[id]! < budget[r]! {
+                    if try setType(usable[n], id) { sum += budget[id]!; chain.append(name[id]!); n += 1; break }
+                    else { refused.append((sum + budget[id]!, chain.joined(separator: "+") + " +[\(name[id]!)]")) }
+                }
+            }
+            accepted.append((sum, chain.joined(separator: "+")))
+            print(String(format: "trial %d: accepted total %.2f with %d units%@", t + 1, sum, n, refusedAt.map { " (first refusal: \(name[$0]!))" } ?? ""))
+        }
+        try clear()
+        let maxOK = accepted.max { $0.0 < $1.0 }!, minNo = refused.min { $0.0 < $1.0 }
+        print(String(format: "\nlargest accepted total: %.2f  (%@)", maxOK.0, maxOK.1))
+        if let m = minNo { print(String(format: "smallest refused total: %.2f  (%@)", m.0, m.1)) }
+        if let m = minNo { print(maxOK.0 < m.0 ? String(format: "CONSISTENT: limit is between %.2f and %.2f", maxOK.0, m.0)
+                                               : "INCONSISTENT: an accepted total exceeds a refused one (limit is not a plain sum)") }
+        try dev.editorMode(false)
     case "active":
         // prints the active patch name (edit buffer) after optionally sending raw messages (editor mode OFF while sending)
         for a in args.dropFirst() {

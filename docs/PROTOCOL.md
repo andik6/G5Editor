@@ -87,12 +87,15 @@ Bits 33–34, 46–47 and 88–95 have always been 0.
 | bytes 127–136 | Name, 10 ASCII characters padded with spaces |
 
 ### Rules the pedal enforces
-- Only one Z-Pedal effect per patch. Extra ones become type 107 (empty).
+- Each patch has exactly one **Z-Pedal slot**: the unit holding a Z-Pedal effect or ZP-None (165).
+  That unit only accepts Z-Pedal types; any other type turns it into ZP-None. A Z-Pedal type (incl. ZP-None) sent to
+  any other unit is refused and that unit becomes type 107 (empty), losing its previous effect. (Verified on firmware 1.20.)
 - If the DSP is full, the pedal refuses a type change; the edit buffer still holds the old type afterwards.
 
 ## Effect catalog
 - `tools/make_catalog.py` builds `effects.json` from the old Edit&Share resources: `Module.xml` and the `.zrc` files.
 - Amp cabinet text and short descriptions are added from the operation manual.
-- There are 147 effect types, including 22 amps and 21 Z-Pedal effects. Each of the 9 units accepts any type.
+- There are 147 effect types, including 22 amps and 21 Z-Pedal effects. Each of the 9 units accepts any non-Z-Pedal type, except the Z-Pedal slot (see above).
+- No DSP limit was hit over MIDI: 8 of the heaviest amps plus a Z-Pedal effect, all enabled, were accepted with normal sound and no "DSP FULL" (2026-11-21).
 - **Displayed value** = raw value + `offset`. For choice parameters, `choices[raw]` is the label.
 - **Tempo sync:** a raw value ≥ `syncFrom` means a note value instead of a time or rate. The note names are *unverified* on the G5.

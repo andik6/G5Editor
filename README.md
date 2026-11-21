@@ -82,7 +82,7 @@ To install a local build, copy `dist/G5 Editor.app` to `/Applications`.
 ## Safety notes
 - **Back up before editing.** One click, and it lets you undo anything.
 - The pedal auto-saves edits to the patch you are editing. **Revert** restores the patch as it was when you opened it, both on the pedal and in memory.
-- The G5 allows only **one Z-Pedal effect per patch**, and it may refuse an effect when it runs out of DSP power ("DSP FULL"). The app blocks the first case and tells you about the second.
+- Each G5 patch has one **Z-Pedal slot**. It only holds Z-Pedal effects (or ZP-None), and Z-Pedal effects only fit there. The effect browser follows this rule, and the app tells you if the pedal rewrites an effect anyway.
 
 ## Known limitations
 - **Tempo-synced values:** the note names (delay times or rates set to note values) come from Zoom's other pedals and haven't been checked on the G5's display.
