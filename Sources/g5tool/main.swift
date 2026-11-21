@@ -18,6 +18,20 @@ if args.first == "selftest" {
     print(t.name, t.params.map { "\($0.name)=\($0.display(d.param(4, $0.prm)))" }, EffectCatalog.shared.types.count)
     exit(0)
 }
+if args.first == "apply", args.contains("--dry-run") {
+    // apply <bank.json> <bank 1-99> --dry-run : validate a bank spec and print the plan, without the pedal
+    let spec = try! BankSpec.load(URL(fileURLWithPath: args[1]))
+    switch spec.validate() {
+    case .failure(let e): print("Problems:\n\(e)"); exit(1)
+    case .success(let r):
+        print("\(spec.title ?? "bank") → bank \(args[2]) (dry run, nothing written)")
+        for (i, p) in r.patches.enumerated() {
+            print("  \(args[2])-\(i + 1) “\(p.name)” level \(p.level.map(String.init) ?? "unchanged"), Z slot: \(p.zpedal.name)")
+            for u in p.units { print("      \(u.on ? "ON " : "off") \(u.type.name.padding(toLength: 10, withPad: " ", startingAt: 0)) " + u.raw.map { "\($0.name)=\($0.raw)" }.joined(separator: " ")) }
+        }
+        exit(0)
+    }
+}
 if args.first == "zslots" {
     // zslots <backup.syx> : offline check of PatchData.zSlot across a backup
     let all = try! Backup.read(URL(fileURLWithPath: args[1]))
@@ -67,13 +81,14 @@ if args.first == "monitor" {
     guard let out = outs.first(where: { $0.name.localizedCaseInsensitiveContains(want) }) else { print("no output", want); exit(1) }
     let frames = args.count > 3 ? UInt32(args[3]) ?? 32 : 32
     let m = try! AudioMonitor(input: inp, output: out, bufferFrames: frames, margin: args.count > 4 ? Int(args[4]) ?? 64 : 64)
+    if args.count > 5, let db = Float(args[5]) { m.gain = pow(10, db / 20) }   // optional gain in dB (tests the limiter)
     print("\(inp.name) \(m.inputRate) Hz -> \(out.name) \(m.outputRate) Hz  buffers \(m.bufferFrames)  target \(m.targetFrames)")
     try! m.start()
     for t in 1...(Int(args[1]) ?? 5) {
         Thread.sleep(forTimeInterval: 1)
         let s = m.takeStats()
-        print(String(format: "%2ds in %6d out %6d  underruns %d skips %d  peak in %.4f out %.4f  latency %.1f ms",
-                     t, s.inputFrames, s.outputFrames, s.underruns, s.skips, s.inputPeak, s.outputPeak, s.latencyMs))
+        print(String(format: "%2ds in %6d out %6d  underruns %d skips %d  peak in %.4f out %.4f  limiting %.1f dB  latency %.1f ms",
+                     t, s.inputFrames, s.outputFrames, s.underruns, s.skips, s.inputPeak, s.outputPeak, s.limitingDb, s.latencyMs))
     }
     m.stop(); exit(0)
 }
@@ -308,6 +323,44 @@ do {
             let now = try dev.readPatch(s); let was = all.first { $0.slot == s }!
             print("slot \(s): now '\(now.name)'  backup '\(was.name)'  identical: \(now.data == was.data)")
         }
+        try dev.editorMode(false)
+    case "show":
+        // show <slot> : stored patch with every unit's knobs as the pedal displays them
+        try dev.editorMode(true)
+        let g = try dev.readPatch(Int(args[1])!)
+        guard let d = g.patchData else { break }
+        print("\(g.name)  level \(d.level)  Z slot: effect \((d.zSlot ?? -1) + 1)")
+        for u in 0..<PatchData.unitCount {
+            guard let t = d.type(u), !t.isEmpty else { continue }
+            print("  \(u + 1) \(d.isOn(u) ? "ON " : "off") \(t.name.padding(toLength: 10, withPad: " ", startingAt: 0)) " + t.params.map { "\($0.name)=\($0.display(d.param(u, $0.prm)))" }.joined(separator: " "))
+        }
+        try dev.editorMode(false)
+    case "apply":
+        // apply <bank.json> <bank 1-99> : full backup, then write the bank and verify each patch by reading it back
+        let spec = try BankSpec.load(URL(fileURLWithPath: args[1]))
+        let bank = Int(args[2])!
+        let resolved: BankSpec.Resolved
+        switch spec.validate() { case .failure(let e): print("Problems:\n\(e)"); exit(1); case .success(let r): resolved = r }
+        let all = try dev.readAll { _, _ in }
+        try FileManager.default.createDirectory(at: Backup.defaultFolder, withIntermediateDirectories: true)
+        let url = Backup.timestampedURL()
+        try Backup.write(all, to: url)
+        print("backup: \(url.path)")
+        try resolved.apply(to: dev, bank: bank)
+        print("done: \(spec.title ?? "bank") written to bank \(bank)")
+    case "alloff":
+        // alloff <slot> : saves the stored patch to a .syx, then stores it with every effect switched off
+        // (a clean signal path for noise tests). Undo with: restore1 <that .syx> <slot>
+        let slot = Int(args[1])!
+        try dev.editorMode(true)
+        let orig = try dev.readPatch(slot)
+        let url = Backup.defaultFolder.appendingPathComponent("slot\(slot)-before-alloff.syx")
+        try Backup.write([orig], to: url)
+        try dev.selectPatch(slot); Thread.sleep(forTimeInterval: 0.6)
+        for u in 0..<PatchData.unitCount { try dev.sendParam(unit: u, prm: 0, value: 0); Thread.sleep(forTimeInterval: 0.12) }
+        let d = try dev.readEditBuffer()
+        try dev.store(d, slot: slot)
+        print("saved \(orig.name) to \(url.path); stored with all effects off: \((0..<PatchData.unitCount).allSatisfy { !d.isOn($0) })")
         try dev.editorMode(false)
     case "verifyall":
         // verifyall <backup.syx> : reads every stored patch and lists those that differ from the backup

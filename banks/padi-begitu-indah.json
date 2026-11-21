@@ -1,0 +1,44 @@
+{
+  "title": "Begitu Indah - Padi",
+  "notes": "AI interpretation from general knowledge of the record, not from listening: chimey clean arpeggios with chorus and delay, a warm Marshall-style crunch for the louder parts, and a singing, sustained lead for the solo. Tempo not verified, so delay times are moderate. Tweak gain and treble to your guitar.",
+  "patches": [
+    {
+      "name": "INDAH CLN",
+      "level": 100,
+      "zpedal": "ZP-None",
+      "notes": "Intro and verses: compressed clean Fender-style combo, wide chorus, soft delay, hall.",
+      "effects": [
+        { "effect": "COMP", "params": { "Sense": 5, "Tone": 6, "Level": 105, "ATTCK": "Fast" } },
+        { "effect": "FD COMBO", "params": { "Gain": 20, "Tube": 30, "Level": 100, "Trebl": 60, "Middl": 45, "Bass": 50, "Prese": 55, "CAB": "FD COMBO 2x12" } },
+        { "effect": "StereoCho", "params": { "Depth": 50, "Rate": 12, "Mix": 45, "Tone": 7, "Level": 100 } },
+        { "effect": "Delay", "params": { "Time": 400, "F.B": 25, "Mix": 20, "HiDMP": 5, "Level": 100 } },
+        { "effect": "Hall", "params": { "Decay": 12, "Tone": 6, "Mix": 22, "PreD": 20, "Level": 100 } }
+      ]
+    },
+    {
+      "name": "INDAH RHY",
+      "level": 100,
+      "zpedal": "ZP-None",
+      "notes": "Chorus and louder parts: medium-gain Marshall crunch pushed by a light Tube Screamer, small room.",
+      "effects": [
+        { "effect": "ZNR", "params": { "THRSH": 6 } },
+        { "effect": "T Scream", "params": { "Gain": 25, "Tone": 55, "Level": 115 } },
+        { "effect": "MS CRUNCH", "params": { "Gain": 55, "Tube": 40, "Level": 100, "Trebl": 55, "Middl": 60, "Bass": 50, "Prese": 55, "CAB": "MS CRUNCH 4x12" } },
+        { "effect": "Room", "params": { "Decay": 8, "Tone": 6, "Mix": 12, "PreD": 10, "Level": 100 } }
+      ]
+    },
+    {
+      "name": "INDAH SOLO",
+      "level": 108,
+      "zpedal": "ZP-None",
+      "notes": "Solo: higher-gain Marshall with a boost and more mids for sustain, clear delay and a longer reverb; slightly louder.",
+      "effects": [
+        { "effect": "ZNR", "params": { "THRSH": 8 } },
+        { "effect": "T Scream", "params": { "Gain": 40, "Tone": 60, "Level": 130 } },
+        { "effect": "MS DRIVE", "params": { "Gain": 65, "Tube": 45, "Level": 100, "Trebl": 55, "Middl": 65, "Bass": 50, "Prese": 58, "CAB": "MS DRIVE 4x12" } },
+        { "effect": "Delay", "params": { "Time": 420, "F.B": 30, "Mix": 25, "HiDMP": 6, "Level": 100 } },
+        { "effect": "HD Reverb", "params": { "Decay": 35, "Tone": 6, "Mix": 22, "PreD": 30, "HPF": 5, "Level": 100 } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "title": "Stars - Switchfoot (Nothing Is Sound, 2005)",
+  "notes": "AI interpretation from general knowledge of the record, not from listening: gritty mid-forward alt-rock distortion, big chorus wall, light ambience. Tempo not verified, so delay times are moderate. Tweak gain/treble to your guitar.",
+  "patches": [
+    {
+      "name": "STARS VRS",
+      "level": 100,
+      "zpedal": "ZP-None",
+      "notes": "Intro riff / verses: AC30-style crunch pushed by a light Tube Screamer, short slapback, small room.",
+      "effects": [
+        {
+          "effect": "ZNR",
+          "params": {
+            "THRSH": 8
+          }
+        },
+        {
+          "effect": "T Scream",
+          "params": {
+            "Gain": 30,
+            "Tone": 55,
+            "Level": 110
+          }
+        },
+        {
+          "effect": "VX COMBO",
+          "params": {
+            "Gain": 55,
+            "Tube": 40,
+            "Level": 100,
+            "Trebl": 60,
+            "Middl": 55,
+            "Bass": 45,
+            "Prese": 60,
+            "CAB": "VX COMBO 2x12"
+          }
+        },
+        {
+          "effect": "Delay",
+          "params": {
+            "Time": 110,
+            "F.B": 10,
+            "Mix": 15,
+            "HiDMP": 6,
+            "Level": 100
+          }
+        },
+        {
+          "effect": "Room",
+          "params": {
+            "Decay": 8,
+            "Tone": 6,
+            "Mix": 12,
+            "PreD": 10,
+            "Level": 100
+          }
+        }
+      ]
+    },
+    {
+      "name": "STARS CHO",
+      "level": 100,
+      "zpedal": "ZP-None",
+      "notes": "Chorus wall: Rectifier-style high gain, tightened by a low-gain TS boost, mids kept up so it cuts.",
+      "effects": [
+        {
+          "effect": "ZNR",
+          "params": {
+            "THRSH": 10
+          }
+        },
+        {
+          "effect": "T Scream",
+          "params": {
+            "Gain": 15,
+            "Tone": 55,
+            "Level": 125
+          }
+        },
+        {
+          "effect": "BG DRIVE",
+          "params": {
+            "Gain": 65,
+            "Tube": 40,
+            "Level": 95,
+            "Trebl": 58,
+            "Middl": 55,
+            "Bass": 55,
+            "Prese": 60,
+            "CAB": "BG DRIVE 4x12"
+          }
+        },
+        {
+          "effect": "Room",
+          "params": {
+            "Decay": 10,
+            "Tone": 6,
+            "Mix": 12,
+            "PreD": 10,
+            "Level": 100
+          }
+        }
+      ]
+    },
+    {
+      "name": "STARS LEAD",
+      "level": 108,
+      "zpedal": "ZP-None",
+      "notes": "Lead lines / solo: Marshall JCM-style drive with a boost, more mids, a clear delay and some reverb; slightly louder.",
+      "effects": [
+        {
+          "effect": "ZNR",
+          "params": {
+            "THRSH": 10
+          }
+        },
+        {
+          "effect": "T Scream",
+          "params": {
+            "Gain": 35,
+            "Tone": 60,
+            "Level": 130
+          }
+        },
+        {
+          "effect": "MS DRIVE",
+          "params": {
+            "Gain": 70,
+            "Tube": 40,
+            "Level": 100,
+            "Trebl": 55,
+            "Middl": 65,
+            "Bass": 50,
+            "Prese": 58,
+            "CAB": "MS DRIVE 4x12"
+          }
+        },
+        {
+          "effect": "Delay",
+          "params": {
+            "Time": 380,
+            "F.B": 30,
+            "Mix": 28,
+            "HiDMP": 6,
+            "Level": 100
+          }
+        },
+        {
+          "effect": "HD Reverb",
+          "params": {
+            "Decay": 30,
+            "Tone": 6,
+            "Mix": 25,
+            "PreD": 30,
+            "HPF": 5,
+            "Level": 100
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -180,13 +180,21 @@ public final class AudioMonitor {
         public var inputFrames = 0, outputFrames = 0, underruns = 0, skips = 0
         public var inputPeak: Float = 0, outputPeak: Float = 0
         public var latencyMs: Double = 0
+        /// Deepest gain reduction the output limiter applied since the last call, in dB (0 = not limiting).
+        public var limitingDb: Float = 0
     }
 
     public let input: AudioDevice
     public let output: AudioDevice
     public let inputRate: Double, outputRate: Double
-    /// Linear gain, 0…2. Read on the audio thread; a torn read of a Float is harmless.
+    /// Linear gain before the limiter (up to about 4 = +12 dB). Read on the audio thread; a torn read of a Float is harmless.
     public var gain: Float = 1
+
+    // Output peak limiter: lets the monitor run as loud as mastered music without clipping.
+    // Stereo-linked, instant attack (no look-ahead, so no added latency), smooth release.
+    private let limitCeiling: Float = 0.891          // -1 dBFS
+    private var limitGain: Float = 1                  // current gain reduction factor, audio thread only
+    private let limitRelease: Float                   // per-sample release coefficient, ~120 ms
 
     private let capacity = 16384                  // ring size in stereo frames (power of two)
     private let ring: UnsafeMutablePointer<Float>
@@ -213,6 +221,7 @@ public final class AudioMonitor {
         inputRate = CoreAudioDevices.sampleRate(input.id)
         outputRate = CoreAudioDevices.sampleRate(output.id)
         guard inputRate > 0, outputRate > 0 else { throw AudioMonitorError("Couldn't read the audio sample rates.") }
+        limitRelease = Float(1 - exp(-1 / (0.12 * outputRate)))
         ring = .allocate(capacity: capacity * 2); ring.initialize(repeating: 0, count: capacity * 2)
         convIn = .allocate(capacity: scratchFrames * 2); convIn.initialize(repeating: 0, count: scratchFrames * 2)
         convOut = .allocate(capacity: scratchFrames * 2); convOut.initialize(repeating: 0, count: scratchFrames * 2)
@@ -278,7 +287,7 @@ public final class AudioMonitor {
             + Double(CoreAudioDevices.bufferSize(input.id)) / inputRate
             + Double(CoreAudioDevices.bufferSize(output.id)) / outputRate
             + hiddenLatency) * 1000
-        stats.inputPeak = 0; stats.outputPeak = 0
+        stats.inputPeak = 0; stats.outputPeak = 0; stats.limitingDb = 0
         return s
     }
 
@@ -367,8 +376,20 @@ public final class AudioMonitor {
         }
         if produced < outFrames { (convOut + produced * 2).update(repeating: 0, count: (outFrames - produced) * 2) }
 
+        // Gain, then the peak limiter, in place on the interleaved stereo buffer.
+        let g = gain, ceiling = limitCeiling, release = limitRelease
+        var lg = limitGain, minGain: Float = 1
+        for i in 0..<outFrames {
+            let l = convOut[i * 2] * g, r = convOut[i * 2 + 1] * g
+            let pk = max(abs(l), abs(r))
+            let need: Float = pk > ceiling ? ceiling / pk : 1
+            if need < lg { lg = need } else { lg += (need - lg) * release }
+            minGain = min(minGain, lg)
+            convOut[i * 2] = l * lg; convOut[i * 2 + 1] = r * lg
+        }
+        limitGain = lg
+
         // Write L/R into the device's first two channels, silence everywhere else.
-        let g = gain
         var peak: Float = 0
         var channel = 0
         for b in buffers where b.mData != nil {
@@ -378,7 +399,7 @@ public final class AudioMonitor {
             for c in 0..<n {
                 let src = channel + c
                 for i in 0..<frames {
-                    let v = src < 2 ? convOut[i * 2 + src] * g : 0
+                    let v = src < 2 ? convOut[i * 2 + src] : 0
                     p[i * n + c] = v
                     peak = max(peak, abs(v))
                 }
@@ -387,6 +408,7 @@ public final class AudioMonitor {
         }
         os_unfair_lock_lock(lock)
         stats.outputFrames += outFrames; stats.outputPeak = max(stats.outputPeak, peak)
+        stats.limitingDb = max(stats.limitingDb, -20 * log10(max(minGain, 1e-6)))
         os_unfair_lock_unlock(lock)
     }
 

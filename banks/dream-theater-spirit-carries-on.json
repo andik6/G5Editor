@@ -1,0 +1,43 @@
+{
+  "title": "The Spirit Carries On - Dream Theater (Metropolis Pt. 2, 1999)",
+  "notes": "AI interpretation from general knowledge of the record, not from listening: an acoustic-style part, a Mesa Rectifier rhythm at moderate gain, and a singing Mesa Mark lead with delay and a big reverb, in the spirit of Petrucci's rig of that era. Patch 1 uses the acoustic simulator without an amp; it sounds best with GLOBAL OUTPUT set to DIRECT. Tempo not verified, so delay times are moderate.",
+  "patches": [
+    {
+      "name": "SPIRIT AC",
+      "level": 100,
+      "zpedal": "ZP-None",
+      "notes": "Acoustic part: compressor, acoustic simulator (no amp), a touch of stereo chorus for width, hall.",
+      "effects": [
+        { "effect": "COMP", "params": { "Sense": 5, "Tone": 6, "Level": 100, "ATTCK": "Fast" } },
+        { "effect": "Aco.Sim", "params": { "Top": 60, "Body": 60, "Level": 100 } },
+        { "effect": "StereoCho", "params": { "Depth": 35, "Rate": 10, "Mix": 25, "Tone": 7, "Level": 100 } },
+        { "effect": "Hall", "params": { "Decay": 14, "Tone": 6, "Mix": 20, "PreD": 20, "Level": 100 } }
+      ]
+    },
+    {
+      "name": "SPIRIT RHY",
+      "level": 100,
+      "zpedal": "ZP-None",
+      "notes": "Rhythm: Dual Rectifier at moderate gain, tightened by a low-gain Tube Screamer, small room.",
+      "effects": [
+        { "effect": "ZNR", "params": { "THRSH": 8 } },
+        { "effect": "T Scream", "params": { "Gain": 10, "Tone": 55, "Level": 120 } },
+        { "effect": "BG DRIVE", "params": { "Gain": 60, "Tube": 45, "Level": 100, "Trebl": 58, "Middl": 50, "Bass": 55, "Prese": 58, "CAB": "BG DRIVE 4x12" } },
+        { "effect": "Room", "params": { "Decay": 8, "Tone": 6, "Mix": 10, "PreD": 10, "Level": 100 } }
+      ]
+    },
+    {
+      "name": "SPIRIT SOL",
+      "level": 110,
+      "zpedal": "ZP-None",
+      "notes": "Solo: boosted Mesa Mark-style lead for long sustain, clear delay and a big reverb; louder than the rhythm.",
+      "effects": [
+        { "effect": "ZNR", "params": { "THRSH": 8 } },
+        { "effect": "T Scream", "params": { "Gain": 30, "Tone": 60, "Level": 130 } },
+        { "effect": "BG CRUNCH", "params": { "Gain": 72, "Tube": 50, "Level": 100, "Trebl": 58, "Middl": 55, "Bass": 50, "Prese": 60, "CAB": "BG DRIVE 4x12" } },
+        { "effect": "Delay", "params": { "Time": 450, "F.B": 30, "Mix": 22, "HiDMP": 6, "Level": 100 } },
+        { "effect": "HD Reverb", "params": { "Decay": 40, "Tone": 6, "Mix": 22, "PreD": 30, "HPF": 5, "Level": 100 } }
+      ]
+    }
+  ]
+}

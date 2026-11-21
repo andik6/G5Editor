@@ -11,6 +11,9 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
   - A refused effect change no longer blames DSP power. No DSP limit was hit in tests (8 amps at once were accepted). The message now says what the pedal set instead.
 
 ### Changed
+- **Monitor can play as loud as mastered music.** The volume goes up to +12 dB and is shown in dB (0 dB = the G5's own level). A guitar on its own peaks around -6 dBFS, about 8 to 10 dB quieter than a YouTube track, so 100% used to sound quiet.
+  - A peak limiter on the monitor output (ceiling -1 dBFS, instant attack, 120 ms release) keeps the louder settings from clipping. A **LIMIT** light shows when it works.
+  - The "Monitor volume too high" warning is gone, because the Mac side can no longer clip. "Clipping at the G5" stays.
 - **Lower monitor latency:** about 9 ms instead of about 18 ms on G5 → HD USB.
   - IO buffers are now 32 frames instead of 128. Tested for 2 minutes, and under full CPU load on all cores, with no dropouts.
   - New **Latency** setting in the sidebar: Low (32), Normal (64) or Safe (128), for busy or older Macs.
@@ -19,7 +22,9 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
 
 ### Added
 - `g5tool latency`: buffer ranges, hidden driver latency and supported sample rates for the G5 and each output.
-- `g5tool monitor <sec> [output] [buffer] [margin]`, for latency experiments.
+- `g5tool monitor <sec> [output] [buffer] [margin] [gainDb]`, for latency and limiter experiments.
+- **Bank files (AI Sound Patcher, first step):** `g5tool apply <bank.json> <bank>` writes a 3-patch bank described by effect and knob names. It checks everything against the catalog and the Z-Pedal rule first (`--dry-run` checks only), takes a full backup, and verifies each patch by reading it back. Example: `banks/stars-switchfoot.json`.
+- `g5tool show <slot>` (a patch's knobs as the pedal displays them), `g5tool verifyall <backup>`, and `g5tool alloff <slot>` (all effects off, for noise tests; the patch is saved first).
 
 ## [0.2.1] - 2026-11-17
 

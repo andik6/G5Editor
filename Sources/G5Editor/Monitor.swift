@@ -4,19 +4,16 @@ import G5Core
 
 /// What the level check found, shown under the meter.
 enum LevelWarning: Equatable {
-    case g5Clipping        // the G5 itself is sending full-scale audio
-    case monitorClipping   // only the Mac side clips: monitor volume above unity
+    case g5Clipping        // the G5 itself is sending full-scale audio (the Mac side can't clip: it has a limiter)
 
     var title: String {
         switch self {
         case .g5Clipping: "Clipping at the G5"
-        case .monitorClipping: "Monitor volume too high"
         }
     }
     var advice: String {
         switch self {
         case .g5Clipping: "The G5 is sending a signal that hits 0 dB, which sounds harsh and distorted. Lower MASTER LEVEL on the G5 (around 70) or this patch's PATCH LEVEL."
-        case .monitorClipping: "The G5's signal is fine, but the monitor volume pushes it past 0 dB on the Mac. Bring the slider back toward 100% and turn up your speakers or amp instead."
         }
     }
 }
@@ -51,6 +48,10 @@ final class MonitorController: ObservableObject {
     /// Set while monitoring is wanted but the audio route is down and being re-established.
     @Published private(set) var reconnecting = false
     @Published private(set) var warning: LevelWarning?
+    /// How hard the output limiter is working, in dB of gain reduction (smoothed).
+    @Published private(set) var limiting: Float = 0
+    /// Monitor volume in dB (the slider stores an amplitude-like value; gain = volume²).
+    var volumeDb: Double { volume <= 0.001 ? -.infinity : 40 * log10(volume) }
 
     private var monitor: AudioMonitor?
     private var timer: Timer?
@@ -82,7 +83,7 @@ final class MonitorController: ObservableObject {
     }
 
     /// Debug rendering only.
-    func preview(level: Float, warning: LevelWarning?) { isOn = true; info = "On · ~9 ms delay"; self.level = level; self.warning = warning }
+    func preview(level: Float, warning: LevelWarning?, limiting: Float = 0) { isOn = true; info = "On · ~9 ms delay"; self.level = level; self.warning = warning; self.limiting = limiting }
 
     var selectedOutput: AudioDevice? { outputs.first { $0.uid == outputUID } }
 
@@ -182,8 +183,8 @@ final class MonitorController: ObservableObject {
         }
 
         // Level check. 16-bit full scale is 32767/32768, so anything at -0.1 dBFS or above counts as clipping.
-        let found: LevelWarning? = s.inputPeak >= 0.989 ? .g5Clipping
-            : (s.outputPeak > 1.0 && !tunerMuted) ? .monitorClipping : nil
+        let found: LevelWarning? = s.inputPeak >= 0.989 ? .g5Clipping : nil
+        limiting = max(s.limitingDb, limiting * 0.85)             // smoothed for the display
         if let found {
             if warning != found { log("monitor: \(found.title) (in \(s.inputPeak), out \(s.outputPeak))") }
             warning = found
@@ -249,14 +250,20 @@ struct MonitorSection: View {
                 .help("Low has the least delay. If you hear clicks or dropouts, choose Normal or Safe.")
                 HStack(spacing: 6) {
                     Image(systemName: "speaker.fill").font(.caption2).foregroundStyle(.secondary)
-                    Slider(value: $monitor.volume, in: 0...1.4).controlSize(.small)
+                    Slider(value: $monitor.volume, in: 0...2).controlSize(.small)   // up to +12 dB
                     Image(systemName: "speaker.wave.3.fill").font(.caption2).foregroundStyle(.secondary)
-                    Text("\(Int((monitor.volume * 100).rounded()))%")
-                        .font(.caption2.monospacedDigit()).foregroundStyle(monitor.volume > 1.005 ? .orange : .secondary)
-                        .frame(width: 32, alignment: .trailing)
+                    Text(monitor.volumeDb.isFinite ? String(format: "%+.0f dB", monitor.volumeDb) : "off")
+                        .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(width: 42, alignment: .trailing)
                 }
-                .help("Monitor volume. 100% plays the G5 at its own level; above that it can clip.")
-                LevelMeter(level: monitor.level, clipping: monitor.warning != nil).opacity(monitor.isOn ? 1 : 0.35)
+                .help("Monitor volume. 0 dB plays the G5 at its own level. Up to +12 dB makes it as loud as mastered music; a limiter keeps the peaks from clipping.")
+                HStack(spacing: 6) {
+                    LevelMeter(level: monitor.level, clipping: monitor.warning != nil)
+                    Text("LIMIT").font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(monitor.limiting > 0.5 ? Color.orange : Color.white.opacity(0.15))
+                        .help(String(format: "The limiter is holding the peaks down by about %.0f dB. A little is fine; if it stays high, lower the volume.", monitor.limiting))
+                }
+                .opacity(monitor.isOn ? 1 : 0.35)
                 if let w = monitor.warning {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)

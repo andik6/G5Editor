@@ -61,7 +61,9 @@ Runs on macOS 14 or later, on both Apple Silicon and Intel Macs.
 - For listening on speakers or headphones, set the G5's **GLOBAL → OUTPUT** to **DIRECT**. The setting also changes the USB signal, and COMBO/STACK modes sound wrong on full-range speakers.
 - Remembers its last state, and turns itself back on when the app starts or the pedal is plugged in again.
 - **Reconnects by itself** if audio stops, a device is unplugged and re-plugged, a sample rate changes, or the Mac wakes from sleep.
-- **Clip warning:** the meter's dot turns red when the signal clips. A hint says whether to lower the G5's MASTER LEVEL or patch level, or the monitor volume. The volume is shown in percent; 100% plays the G5 at its own level.
+- **Volume up to +12 dB with a limiter.** 0 dB plays the G5 at its own level, which is quieter than mastered music; around +6 to +9 dB matches a YouTube track. A peak limiter keeps the output from clipping, and a **LIMIT** light shows when it works.
+- **Clip warning:** the meter's dot turns red when the G5's own output clips, with a hint to lower MASTER LEVEL or the patch level.
+- **Tip:** compare against other audio on the *same* output. The Mac's built-in speakers are much quieter than an interface or monitor speakers, and add about 17 ms of delay.
 
 ## Requirements
 - macOS 14 Sonoma or later
