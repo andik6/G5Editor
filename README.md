@@ -22,7 +22,7 @@ Runs on macOS 14 or later, on both Apple Silicon and Intel Macs.
 ## Features
 
 ### Visual patch editor
-- All 297 patches are listed in the sidebar by bank (for example `01-1 Clean`). You can search by patch name or by effect name ("Delay", "MS 1959"…).
+- All 297 patches are listed in the sidebar, grouped into 99 banks that open and close (⌥-click or **Expand All** for all of them, ← / → for the selected one). A closed bank shows its three patch names, or the song title if the Sound Patcher wrote it. The bank you're playing opens by itself. You can search by patch name, song title or effect name ("Delay", "MS 1959"…).
 - Selecting a patch switches the pedal to it.
 - The signal chain is drawn as stompboxes and amp heads, colour-coded by category:
   - **Click** a footswitch to turn an effect on or off.

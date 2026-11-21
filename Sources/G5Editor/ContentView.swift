@@ -2,11 +2,35 @@ import SwiftUI
 import AppKit
 import G5Core
 
-enum SidebarItem: Hashable { case patch(Int), backup(URL) }
+enum SidebarItem: Hashable { case patch(Int), bank(Int), backup(URL) }
 
 final class SidebarState: ObservableObject {
     @Published var selection: SidebarItem?
     @Published var search = ""
+    /// Banks shown open in the sidebar; remembered between launches.
+    @Published var expanded: Set<Int> = Set(UserDefaults.standard.array(forKey: "expandedBanks") as? [Int] ?? []) {
+        didSet { UserDefaults.standard.set(Array(expanded).sorted(), forKey: "expandedBanks") }
+    }
+    /// Song titles of banks written by the Sound Patcher whose patch names still match the pedal.
+    @Published var bankTitles: [Int: String] = [:]
+
+    func refreshTitles(_ patches: [G5Patch]) {
+        let names = Dictionary(uniqueKeysWithValues: patches.map { ($0.slot, $0.name.trimmingCharacters(in: .whitespaces)) })
+        let dir = Backup.defaultFolder.appendingPathComponent("Sound Patcher", isDirectory: true)
+        let files = ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var out: [Int: String] = [:]
+        for f in files {   // "<date> bank N - title.json", oldest first so the newest wins
+            let n = f.lastPathComponent
+            guard let r = n.range(of: " bank "), let bank = Int(n[r.upperBound...].prefix { $0.isNumber }),
+                  let spec = try? BankSpec.load(f) else { continue }
+            let match = spec.patches.enumerated().allSatisfy { i, p in
+                names[(bank - 1) * 3 + i] == p.name.trimmingCharacters(in: .whitespaces)
+            }
+            if match, let t = spec.title { out[bank] = t } else { out[bank] = nil }
+        }
+        if out != bankTitles { bankTitles = out }
+    }
 }
 
 struct ContentView: View {
@@ -29,17 +53,34 @@ struct ContentView: View {
                     }
                 }
                 MonitorSection()
-                Section("Patches") {
-                    ForEach(filteredPatches) { p in
-                        HStack(spacing: 8) {
-                            Text(AppModel.label(p.slot)).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
-                            Text(p.name)
-                            Spacer()
-                            if model.editing?.slot == p.slot {
-                                Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(Palette.accent)
+                Section {
+                    ForEach(filteredBanks, id: \.bank) { group in
+                        DisclosureGroup(isExpanded: expansion(group.bank)) {
+                            ForEach(group.patches) { p in
+                                HStack(spacing: 8) {
+                                    Text(AppModel.label(p.slot)).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+                                    Text(p.name)
+                                    Spacer()
+                                    if model.editing?.slot == p.slot {
+                                        Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(Palette.accent)
+                                    }
+                                }
+                                .tag(SidebarItem.patch(p.slot))
                             }
+                        } label: {
+                            bankLabel(group)
                         }
-                        .tag(SidebarItem.patch(p.slot))
+                    }
+                } header: {
+                    HStack {
+                        Text("Patches")
+                        Spacer()
+                        let allOpen = ui.expanded.count >= 99
+                        Button(allOpen ? "Collapse All" : "Expand All") {
+                            ui.expanded = allOpen ? [] : Set(1...99)
+                        }
+                        .buttonStyle(.borderless).font(.caption)
+                        .help("Or ⌥-click a bank's disclosure triangle")
                     }
                 }
                 Section("Backups on this Mac") {
@@ -53,6 +94,8 @@ struct ContentView: View {
                 }
             }
             .searchable(text: $ui.search, placement: .sidebar, prompt: "Find patch")
+            .onKeyPress(.leftArrow) { arrow(open: false) }
+            .onKeyPress(.rightArrow) { arrow(open: true) }
             .navigationSplitViewColumnWidth(min: 230, ideal: 250)
             .safeAreaInset(edge: .bottom) {
                 HStack {
@@ -71,8 +114,11 @@ struct ContentView: View {
         .onChange(of: ui.selection) { _, new in
             if case .patch(let slot) = new { model.openPatch(slot) }
         }
+        .onAppear { ui.refreshTitles(model.pedalPatches) }
+        .onChange(of: model.pedalPatches) { _, new in ui.refreshTitles(new) }
         .onReceive(model.$editing.map { $0?.slot }.removeDuplicates()) { slot in
             guard let slot else { return }
+            if !ui.expanded.contains(slot / 3 + 1) { ui.expanded.insert(slot / 3 + 1) }   // the bank being played opens
             if case .backup = ui.selection { return }
             if ui.selection != .patch(slot) { ui.selection = .patch(slot) }
         }
@@ -128,7 +174,59 @@ struct ContentView: View {
         guard !s.isEmpty else { return model.pedalPatches }
         return model.pedalPatches.filter { p in
             p.name.localizedCaseInsensitiveContains(s) || AppModel.label(p.slot).hasPrefix(s)
+                || ui.bankTitles[p.slot / 3 + 1]?.localizedCaseInsensitiveContains(s) == true
                 || (p.patchData.map { d in (0..<9).contains { d.type($0)?.name.localizedCaseInsensitiveContains(s) == true } } ?? false)
+        }
+    }
+
+    private struct BankGroup { let bank: Int; let patches: [G5Patch] }
+
+    private var filteredBanks: [BankGroup] {
+        Dictionary(grouping: filteredPatches) { $0.slot / 3 + 1 }
+            .map { BankGroup(bank: $0.key, patches: $0.value.sorted { $0.slot < $1.slot }) }
+            .sorted { $0.bank < $1.bank }
+    }
+
+    /// Open/closed state of a bank. While searching every matching bank is open; ⌥-click opens or closes all.
+    private func expansion(_ bank: Int) -> Binding<Bool> {
+        Binding(
+            get: { !ui.search.trimmingCharacters(in: .whitespaces).isEmpty || ui.expanded.contains(bank) },
+            set: { open in
+                var next = ui.expanded
+                if NSEvent.modifierFlags.contains(.option) { next = open ? Set(1...99) : [] }
+                else if open { next.insert(bank) } else { next.remove(bank) }
+                if next != ui.expanded { ui.expanded = next }
+            })
+    }
+
+    @ViewBuilder private func bankLabel(_ g: BankGroup) -> some View {
+        let playing = model.editing.map { $0.slot / 3 + 1 == g.bank } ?? false
+        HStack(spacing: 8) {
+            Text(String(format: "%02d", g.bank)).font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+            if let title = ui.bankTitles[g.bank] {
+                Text(title).lineLimit(1)
+            } else {
+                Text(g.patches.map(\.name).joined(separator: " · ")).lineLimit(1).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if playing && !ui.expanded.contains(g.bank) {
+                Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(Palette.accent)
+            }
+        }
+        .help(g.patches.map { "\(AppModel.label($0.slot))  \($0.name)" }.joined(separator: "\n"))
+        .tag(SidebarItem.bank(g.bank))
+    }
+
+    /// ← closes the selected patch's bank (selecting the bank row), → opens the selected bank.
+    private func arrow(open: Bool) -> KeyPress.Result {
+        switch ui.selection {
+        case .patch(let slot) where !open:
+            let b = slot / 3 + 1; ui.expanded.remove(b); ui.selection = .bank(b); return .handled
+        case .bank(let b):
+            if open { ui.expanded.insert(b) } else { ui.expanded.remove(b) }
+            return .handled
+        default: return .ignored
         }
     }
 
