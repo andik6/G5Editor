@@ -5,7 +5,7 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
 ## [Unreleased]
 
 ### Added
-- **Patches grouped by bank** in the sidebar: each bank opens and closes, and its row shows the three patch names (or the song title when the Sound Patcher wrote it). The bank being played opens by itself, open banks are remembered, search opens every matching bank, ⌥-click or Expand All opens or closes them all, and ← / → close or open the selected bank.
+- **Patches grouped by bank** in the sidebar: each bank opens and closes, and its row shows the three patch names (or the song title when the Sound Patcher wrote it). The bank being played opens by itself, open banks are remembered, search opens every matching bank, clicking a bank row opens or closes it, ⌥-click or Expand All opens or closes them all, and ← / → close or open the bank of the selected patch.
 - **AI Sound Patcher** (toolbar ✨ or ⇧⌘P): a chat panel on the right. Ask for the guitar tones of a song and the AI fills one bank (three patches).
   - Uses **Claude Code** on this Mac (`claude -p`), so requests run on your own Claude subscription. Only its web tools are enabled: it researches the gear and tempo, and can't touch files or run commands.
   - The AI is given the effect catalog, the G5's rules and what the target bank holds now (read from the pedal, including your own knob tweaks), so follow-ups like "less gain on the rhythm patch" change only that.

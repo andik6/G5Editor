@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import G5Core
 
-enum SidebarItem: Hashable { case patch(Int), bank(Int), backup(URL) }
+enum SidebarItem: Hashable { case patch(Int), backup(URL) }
 
 final class SidebarState: ObservableObject {
     @Published var selection: SidebarItem?
@@ -13,6 +13,7 @@ final class SidebarState: ObservableObject {
     }
     /// Song titles of banks written by the Sound Patcher whose patch names still match the pedal.
     @Published var bankTitles: [Int: String] = [:]
+    var autoOpened: Int?
 
     func refreshTitles(_ patches: [G5Patch]) {
         let names = Dictionary(uniqueKeysWithValues: patches.map { ($0.slot, $0.name.trimmingCharacters(in: .whitespaces)) })
@@ -54,8 +55,10 @@ struct ContentView: View {
                 }
                 MonitorSection()
                 Section {
+                    // Plain rows, not DisclosureGroup: the outline control fought with our own open/close state.
                     ForEach(filteredBanks, id: \.bank) { group in
-                        DisclosureGroup(isExpanded: expansion(group.bank)) {
+                        bankLabel(group)
+                        if isOpen(group.bank) {
                             ForEach(group.patches) { p in
                                 HStack(spacing: 8) {
                                     Text(AppModel.label(p.slot)).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
@@ -65,10 +68,9 @@ struct ContentView: View {
                                         Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(Palette.accent)
                                     }
                                 }
+                                .padding(.leading, 18)
                                 .tag(SidebarItem.patch(p.slot))
                             }
-                        } label: {
-                            bankLabel(group)
                         }
                     }
                 } header: {
@@ -118,7 +120,11 @@ struct ContentView: View {
         .onChange(of: model.pedalPatches) { _, new in ui.refreshTitles(new) }
         .onReceive(model.$editing.map { $0?.slot }.removeDuplicates()) { slot in
             guard let slot else { return }
-            if !ui.expanded.contains(slot / 3 + 1) { ui.expanded.insert(slot / 3 + 1) }   // the bank being played opens
+            // The bank being played opens once per patch change (onReceive re-fires on every redraw).
+            // Selecting a row inside a closed bank makes the list reopen it, so neither may happen on a mere redraw.
+            guard ui.autoOpened != slot else { return }
+            ui.autoOpened = slot
+            ui.expanded.insert(slot / 3 + 1)
             if case .backup = ui.selection { return }
             if ui.selection != .patch(slot) { ui.selection = .patch(slot) }
         }
@@ -187,21 +193,16 @@ struct ContentView: View {
             .sorted { $0.bank < $1.bank }
     }
 
-    /// Open/closed state of a bank. While searching every matching bank is open; ⌥-click opens or closes all.
-    private func expansion(_ bank: Int) -> Binding<Bool> {
-        Binding(
-            get: { !ui.search.trimmingCharacters(in: .whitespaces).isEmpty || ui.expanded.contains(bank) },
-            set: { open in
-                var next = ui.expanded
-                if NSEvent.modifierFlags.contains(.option) { next = open ? Set(1...99) : [] }
-                else if open { next.insert(bank) } else { next.remove(bank) }
-                if next != ui.expanded { ui.expanded = next }
-            })
+    /// While searching every matching bank is open.
+    private func isOpen(_ bank: Int) -> Bool {
+        !ui.search.trimmingCharacters(in: .whitespaces).isEmpty || ui.expanded.contains(bank)
     }
 
     @ViewBuilder private func bankLabel(_ g: BankGroup) -> some View {
         let playing = model.editing.map { $0.slot / 3 + 1 == g.bank } ?? false
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
+            Image(systemName: isOpen(g.bank) ? "chevron.down" : "chevron.right")
+                .font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary).frame(width: 10)
             Text(String(format: "%02d", g.bank)).font(.system(size: 11, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.secondary)
             if let title = ui.bankTitles[g.bank] {
@@ -214,20 +215,22 @@ struct ContentView: View {
                 Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundStyle(Palette.accent)
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture { toggle(g.bank) }   // the whole row opens and closes the bank; it is not selectable
         .help(g.patches.map { "\(AppModel.label($0.slot))  \($0.name)" }.joined(separator: "\n"))
-        .tag(SidebarItem.bank(g.bank))
     }
 
-    /// ← closes the selected patch's bank (selecting the bank row), → opens the selected bank.
+    private func toggle(_ bank: Int) {
+        if NSEvent.modifierFlags.contains(.option) { ui.expanded = ui.expanded.contains(bank) ? [] : Set(1...99) }
+        else if ui.expanded.contains(bank) { ui.expanded.remove(bank) } else { ui.expanded.insert(bank) }
+    }
+
+    /// ← / → close or open the bank of the selected patch.
     private func arrow(open: Bool) -> KeyPress.Result {
-        switch ui.selection {
-        case .patch(let slot) where !open:
-            let b = slot / 3 + 1; ui.expanded.remove(b); ui.selection = .bank(b); return .handled
-        case .bank(let b):
-            if open { ui.expanded.insert(b) } else { ui.expanded.remove(b) }
-            return .handled
-        default: return .ignored
-        }
+        guard case .patch(let slot) = ui.selection else { return .ignored }
+        let b = slot / 3 + 1
+        if open { ui.expanded.insert(b) } else { ui.expanded.remove(b) }
+        return .handled
     }
 
     var statusLine: String {
