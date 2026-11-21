@@ -28,6 +28,9 @@ struct G5EditorApp: App {
                 Button(patcher.isOpen ? "Hide Sound Patcher" : "Show Sound Patcher") { patcher.toggle() }.keyboardShortcut("p", modifiers: [.command, .shift])
             }
         }
+        Settings {
+            SettingsView().environmentObject(patcher).preferredColorScheme(.dark)
+        }
     }
 }
 

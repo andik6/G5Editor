@@ -2,81 +2,103 @@ import SwiftUI
 import AppKit
 import G5Core
 
-// MARK: - AI provider: Claude Code in headless mode
+// MARK: - AI providers: the user's own coding-agent CLI in headless mode
 
-/// Runs the user's own Claude Code CLI (`claude -p`), so requests use their existing subscription.
-/// Only the web tools are enabled: the AI can research a song but can't touch files or run commands.
-final class ClaudeCodeProvider {
-    struct Reply { var text: String; var sessionID: String?; var isError: Bool }
+/// Which CLI answers the Sound Patcher. Both run on the user's existing subscription, so the app holds no API key,
+/// and both are limited to web research: they can't change files (Claude Code: web tools only; Codex: read-only sandbox).
+enum PatcherBackend: String, CaseIterable, Identifiable {
+    case claude, codex
+    var id: String { rawValue }
 
-    static func locate() -> URL? {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let candidates = ["\(home)/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude",
-                          "\(home)/.claude/local/claude", "\(home)/.npm-global/bin/claude"]
-        return candidates.map(URL.init(fileURLWithPath:)).first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    var name: String { self == .claude ? "Claude Code" : "Codex" }
+    var account: String { self == .claude ? "Claude subscription (Pro or Max)" : "ChatGPT subscription (Plus, Pro, Business…)" }
+    var installHint: String {
+        self == .claude ? "Install Claude Code from claude.com/claude-code, then run `claude auth login` in Terminal."
+                        : "Install Codex with `brew install codex` (or `npm i -g @openai/codex`), then run `codex login` in Terminal."
+    }
+    var loginHint: String {
+        self == .claude ? "Claude Code on this Mac isn't logged in. Open Terminal, run `claude auth login` and sign in with your Claude account. Then send the message again."
+                        : "Codex on this Mac isn't logged in. Open Terminal, run `codex login` and sign in with your ChatGPT account. Then send the message again."
     }
 
-    private var process: Process?
+    static var selected: PatcherBackend {
+        get { PatcherBackend(rawValue: UserDefaults.standard.string(forKey: "patcherBackend") ?? "") ?? .claude }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "patcherBackend") }
+    }
 
-    /// Sends one message. `activity` gets short progress notes ("Searching the web: …"); `done` the final reply.
-    /// Both are called on the main thread.
-    func send(_ message: String, system: String, resume: String?, model: String?,
-              activity: @escaping (String) -> Void, done: @escaping (Reply) -> Void) {
-        guard let exe = Self.locate() else {
-            done(Reply(text: "Claude Code isn't installed on this Mac.", sessionID: nil, isError: true)); return
-        }
+    func locate() -> URL? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let exe = self == .claude ? "claude" : "codex"
+        var dirs = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.npm-global/bin"]
+        if self == .claude { dirs.insert("\(home)/.claude/local", at: 1) }
+        return dirs.map { URL(fileURLWithPath: "\($0)/\(exe)") }.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    }
+
+    enum Status: Equatable { case checking, missing, loggedOut, ready }
+
+    /// Installed and logged in? Runs the CLI's own status command (a second or two); call off the main thread.
+    func status() -> Status {
+        guard let exe = locate() else { return .missing }
+        let out = CLIRun.capture(exe, self == .claude ? ["auth", "status"] : ["login", "status"])
+        if self == .claude { return out.contains("\"loggedIn\": true") ? .ready : .loggedOut }
+        return out.localizedCaseInsensitiveContains("logged in using") ? .ready : .loggedOut
+    }
+}
+
+struct PatcherReply { var text: String; var sessionID: String?; var isError: Bool }
+
+/// Starts a CLI, feeds it stdin, and hands each stdout line to `line`. The process environment is cleaned so a
+/// CLI started from inside another agent session doesn't think it is nested.
+enum CLIRun {
+    static var workDir: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("G5 Editor/Sound Patcher", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
 
-        var args = ["-p", message, "--output-format", "stream-json", "--verbose",
-                    "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch",
-                    "--strict-mcp-config", "--append-system-prompt", system]
-        if let resume { args += ["--resume", resume] }
-        if let model { args += ["--model", model] }
-
+    static func process(_ exe: URL, _ args: [String]) -> Process {
         let p = Process()
         p.executableURL = exe
         p.arguments = args
-        p.currentDirectoryURL = dir
+        p.currentDirectoryURL = workDir
         var env = ProcessInfo.processInfo.environment
-        for k in env.keys where k.hasPrefix("CLAUDE_CODE_") || k == "CLAUDECODE" || k == "AI_AGENT" { env[k] = nil }
+        for k in env.keys where k.hasPrefix("CLAUDE_CODE_") || k == "CLAUDECODE" || k == "AI_AGENT" || k.hasPrefix("CODEX_") && k != "CODEX_HOME" { env[k] = nil }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         env["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:" + (env["PATH"] ?? "/usr/bin:/bin")
         p.environment = env
-        let out = Pipe(), err = Pipe()
-        p.standardOutput = out; p.standardError = err; p.standardInput = FileHandle.nullDevice
+        return p
+    }
 
-        var buffer = Data(), final: Reply?, session: String?, errText = ""
+    /// Runs to completion and returns stdout + stderr (for short status commands).
+    static func capture(_ exe: URL, _ args: [String]) -> String {
+        let p = process(exe, args), pipe = Pipe()
+        p.standardOutput = pipe; p.standardError = pipe; p.standardInput = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Streams stdout line by line on a background queue; `finished` gets (stderr, was it stopped).
+    static func stream(_ exe: URL, _ args: [String], stdin: String?, line: @escaping ([String: Any]) -> Void,
+                       finished: @escaping (String, Bool) -> Void) throws -> Process {
+        let p = process(exe, args)
+        let out = Pipe(), err = Pipe(), inp = Pipe()
+        p.standardOutput = out; p.standardError = err
+        p.standardInput = stdin == nil ? FileHandle.nullDevice : inp
+        var buffer = Data(), errText = ""
         let lock = NSLock()
-        func handle(line: Data) {
-            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return }
-            if let s = obj["session_id"] as? String { session = s }
-            switch obj["type"] as? String {
-            case "assistant":
-                let content = ((obj["message"] as? [String: Any])?["content"] as? [[String: Any]]) ?? []
-                for c in content where c["type"] as? String == "tool_use" {
-                    let input = c["input"] as? [String: Any]
-                    let note: String
-                    switch c["name"] as? String {
-                    case "WebSearch": note = "Searching the web: \(input?["query"] as? String ?? "")"
-                    case "WebFetch": note = "Reading \(URL(string: input?["url"] as? String ?? "")?.host ?? "a page")"
-                    default: note = "Working…"
-                    }
-                    DispatchQueue.main.async { activity(note) }
-                }
-            case "result":
-                final = Reply(text: obj["result"] as? String ?? "", sessionID: session, isError: obj["is_error"] as? Bool ?? false)
-            default: break
-            }
+        func flush(_ d: Data) {
+            if let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { line(obj) }
         }
         out.fileHandleForReading.readabilityHandler = { h in
             let chunk = h.availableData
             lock.lock(); defer { lock.unlock() }
             buffer.append(chunk)
             while let nl = buffer.firstIndex(of: 0x0A) {
-                let line = buffer[buffer.startIndex..<nl]; buffer.removeSubrange(buffer.startIndex...nl)
-                handle(line: Data(line))
+                let l = buffer[buffer.startIndex..<nl]; buffer.removeSubrange(buffer.startIndex...nl)
+                flush(Data(l))
             }
         }
         err.fileHandleForReading.readabilityHandler = { h in
@@ -87,14 +109,100 @@ final class ClaudeCodeProvider {
             out.fileHandleForReading.readabilityHandler = nil
             err.fileHandleForReading.readabilityHandler = nil
             lock.lock()
-            if !buffer.isEmpty { handle(line: buffer); buffer.removeAll() }
-            let reply = final ?? Reply(text: proc.terminationReason == .uncaughtSignal ? "Stopped."
-                                       : "Claude Code ended without a reply. \(errText.prefix(400))", sessionID: session, isError: true)
+            if !buffer.isEmpty { flush(buffer); buffer.removeAll() }
+            let e = errText
             lock.unlock()
-            DispatchQueue.main.async { done(reply) }
+            finished(e, proc.terminationReason == .uncaughtSignal)
         }
-        do { try p.run(); process = p } catch {
-            done(Reply(text: "Couldn't start Claude Code: \(error.localizedDescription)", sessionID: nil, isError: true))
+        try p.run()
+        if let stdin {
+            inp.fileHandleForWriting.write(Data(stdin.utf8))
+            try? inp.fileHandleForWriting.close()
+        }
+        return p
+    }
+}
+
+/// Runs one Sound Patcher turn on the selected CLI. `activity` gets short progress notes ("Searching the web: …"),
+/// `done` the final reply; both on the main thread.
+final class PatcherProvider {
+    private var process: Process?
+
+    func send(_ backend: PatcherBackend, message: String, system: String, resume: String?,
+              activity: @escaping (String) -> Void, done: @escaping (PatcherReply) -> Void) {
+        guard let exe = backend.locate() else {
+            done(PatcherReply(text: "\(backend.name) isn't installed on this Mac. \(backend.installHint)", sessionID: nil, isError: true)); return
+        }
+        let lock = NSLock()
+        var final: PatcherReply?, session: String?, lastText = "", failure: String?
+        func note(_ s: String) { DispatchQueue.main.async { activity(s) } }
+
+        let args: [String], stdin: String?, parse: ([String: Any]) -> Void
+        switch backend {
+        case .claude:
+            var a = ["-p", message, "--output-format", "stream-json", "--verbose",
+                     "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch",
+                     "--strict-mcp-config", "--append-system-prompt", system]
+            if let resume { a += ["--resume", resume] }
+            args = a; stdin = nil
+            parse = { obj in
+                lock.lock(); defer { lock.unlock() }
+                if let s = obj["session_id"] as? String { session = s }
+                switch obj["type"] as? String {
+                case "assistant":
+                    let content = ((obj["message"] as? [String: Any])?["content"] as? [[String: Any]]) ?? []
+                    for c in content where c["type"] as? String == "tool_use" {
+                        let input = c["input"] as? [String: Any]
+                        switch c["name"] as? String {
+                        case "WebSearch": note("Searching the web: \(input?["query"] as? String ?? "")")
+                        case "WebFetch": note("Reading \(URL(string: input?["url"] as? String ?? "")?.host ?? "a page")")
+                        default: note("Working…")
+                        }
+                    }
+                case "result":
+                    final = PatcherReply(text: obj["result"] as? String ?? "", sessionID: session, isError: obj["is_error"] as? Bool ?? false)
+                default: break
+                }
+            }
+        case .codex:
+            // Codex has no system-prompt flag: the instructions lead the first message of a conversation.
+            let common = ["--json", "--skip-git-repo-check", "-c", "sandbox_mode=\"read-only\"", "-c", "web_search=\"live\""]
+            if let resume { args = ["exec", "resume", resume] + common + ["-"]; stdin = message }
+            else { args = ["exec"] + common + ["-"]; stdin = system + "\n\n---\n\n" + message }
+            parse = { obj in
+                lock.lock(); defer { lock.unlock() }
+                let item = obj["item"] as? [String: Any]
+                switch obj["type"] as? String {
+                case "thread.started": session = obj["thread_id"] as? String
+                case "item.started", "item.completed":
+                    switch item?["type"] as? String {
+                    case "web_search":
+                        let q = item?["query"] as? String ?? ""
+                        note(q.isEmpty ? "Searching the web…" : "Searching the web: \(q)")
+                    case "agent_message":
+                        if obj["type"] as? String == "item.completed", let t = item?["text"] as? String { lastText = t }
+                    case "command_execution": note("Looking something up…")
+                    default: break
+                    }
+                case "turn.completed": final = PatcherReply(text: lastText, sessionID: session, isError: false)
+                case "turn.failed": failure = ((obj["error"] as? [String: Any])?["message"] as? String) ?? "The request failed."
+                case "error": failure = obj["message"] as? String ?? failure
+                default: break
+                }
+            }
+        }
+
+        do {
+            process = try CLIRun.stream(exe, args, stdin: stdin, line: parse) { err, stopped in
+                lock.lock()
+                let reply = final ?? PatcherReply(
+                    text: stopped ? "Stopped." : (failure ?? "\(backend.name) ended without a reply. \(err.prefix(400))"),
+                    sessionID: session, isError: true)
+                lock.unlock()
+                DispatchQueue.main.async { done(reply) }
+            }
+        } catch {
+            done(PatcherReply(text: "Couldn't start \(backend.name): \(error.localizedDescription)", sessionID: nil, isError: true))
         }
     }
 
@@ -130,19 +238,36 @@ final class PatcherController: ObservableObject {
     @Published var confirmWrite: UUID?
 
     weak var model: AppModel?
-    private let provider = ClaudeCodeProvider()
+    private let provider = PatcherProvider()
     private var session: String?
+    private var sessionBackend: PatcherBackend?   // a conversation can't move between providers
+
+    /// The provider chosen in Settings, and whether it is installed and logged in.
+    @Published var backend = PatcherBackend.selected {
+        didSet { PatcherBackend.selected = backend; if backend != oldValue { checkStatus() } }
+    }
+    @Published var status: [PatcherBackend: PatcherBackend.Status] = [:]
+
+    func checkStatus() {
+        for b in PatcherBackend.allCases {
+            status[b] = .checking
+            DispatchQueue.global(qos: .userInitiated).async {
+                let s = b.status()
+                DispatchQueue.main.async { self.status[b] = s }
+            }
+        }
+    }
     private var fixAttempts = 0
 
-    var available: Bool { ClaudeCodeProvider.locate() != nil }
+    var available: Bool { backend.locate() != nil }
 
-    init() { isOpen = UserDefaults.standard.bool(forKey: "patcherOpen") }
+    init() { isOpen = UserDefaults.standard.bool(forKey: "patcherOpen"); checkStatus() }
 
     func toggle() { isOpen.toggle() }
 
     func newChat() {
         provider.cancel()
-        messages = []; session = nil; busy = false; activity = ""
+        messages = []; session = nil; sessionBackend = nil; busy = false; activity = ""
     }
 
     func send() {
@@ -168,18 +293,20 @@ final class PatcherController: ObservableObject {
 
     private func ask(_ prompt: String) {
         busy = true; activity = "Thinking…"; started = Date()
-        provider.send(prompt, system: Self.systemPrompt, resume: session, model: nil,
+        if sessionBackend != backend { session = nil; sessionBackend = backend }   // switched provider: start afresh
+        provider.send(backend, message: prompt, system: Self.systemPrompt, resume: session,
                       activity: { [weak self] in self?.activity = $0 },
                       done: { [weak self] in self?.received($0) })
     }
 
-    private func received(_ r: ClaudeCodeProvider.Reply) {
+    private func received(_ r: PatcherReply) {
         busy = false; activity = ""
         if let s = r.sessionID { session = s }
         if r.isError {
             var t = r.text
-            if t.localizedCaseInsensitiveContains("not logged in") || t.contains("/login") {
-                t += "\n\nClaude Code on this Mac isn't logged in. Open Terminal, run `claude auth login` (or `claude`, then `/login`) and sign in with your Claude account. Then send the message again."
+            if t.localizedCaseInsensitiveContains("not logged in") || t.contains("/login") || t.localizedCaseInsensitiveContains("unauthorized") {
+                t += "\n\n" + backend.loginHint
+                status[backend] = .loggedOut
             }
             messages.append(Message(role: .error, text: t)); return
         }
@@ -277,9 +404,11 @@ struct PatcherPanel: View {
             Divider()
             if !patcher.available {
                 ContentUnavailableView {
-                    Label("Claude Code not found", systemImage: "sparkles")
+                    Label("\(patcher.backend.name) not found", systemImage: "sparkles")
                 } description: {
-                    Text("The Sound Patcher uses Claude Code on this Mac, with your own Claude subscription. Install it from claude.com/claude-code, run `claude` once in Terminal to log in, then reopen this panel.")
+                    Text("The Sound Patcher uses an AI assistant on this Mac with your own \(patcher.backend.account). \(patcher.backend.installHint)")
+                } actions: {
+                    SettingsLink { Text("Choose the AI in Settings…") }
                 }
             } else {
                 transcript
@@ -304,6 +433,9 @@ struct PatcherPanel: View {
             Image(systemName: "sparkles").foregroundStyle(Palette.accent)
             Text("Sound Patcher").font(.headline)
             Spacer()
+            SettingsLink { Text(patcher.backend.name).font(.caption) }
+                .buttonStyle(.borderless).foregroundStyle(.secondary)
+                .help("The AI that answers. Change it in Settings (⌘,)")
             Stepper(value: $patcher.bank, in: 1...99) {
                 Text("Bank \(String(format: "%02d", patcher.bank))").font(.callout.monospacedDigit())
             }
