@@ -2,7 +2,7 @@
 
 All notable changes to G5 Editor. Versions follow [semantic versioning](https://semver.org).
 
-## [Unreleased]
+## [0.2.2] - 2026-11-21
 
 ### Added
 - **Patches grouped by bank** in the sidebar: each bank opens and closes, and its row shows the three patch names (or the song title when the Sound Patcher wrote it). The bank being played opens by itself, open banks are remembered, search opens every matching bank, clicking a bank row opens or closes it, ⌥-click or Expand All opens or closes them all, and ← / → close or open the bank of the selected patch.
@@ -12,6 +12,11 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
   - Every proposal is validated against the catalog and the Z-Pedal rule. Mistakes go back to the AI automatically (twice at most).
   - A preview shows each patch's chain, notes and knob settings. Nothing is written until you click **Write to Bank**. The app then backs up every patch, writes and verifies the bank, and offers **Undo**.
   - Each written bank is also saved as JSON in `~/Documents/G5 Backups/Sound Patcher/`.
+- `g5tool latency`: buffer ranges, hidden driver latency and supported sample rates for the G5 and each output.
+- `g5tool monitor <sec> [output] [buffer] [margin] [gainDb]`, for latency and limiter experiments.
+- **Bank files (AI Sound Patcher, first step):** `g5tool apply <bank.json> <bank>` writes a 3-patch bank described by effect and knob names. It checks everything against the catalog and the Z-Pedal rule first (`--dry-run` checks only), takes a full backup, and verifies each patch by reading it back. Example: `banks/stars-switchfoot.json`.
+- `g5tool catalogref` (the effect reference the AI gets) and `g5tool describe <backup> <bank>` (a bank in the bank-file format).
+- `g5tool show <slot>` (a patch's knobs as the pedal displays them), `g5tool verifyall <backup>`, and `g5tool alloff <slot>` (all effects off, for noise tests; the patch is saved first).
 
 ### Fixed
 - **Z-Pedal slot handling.** Each G5 patch has one Z-Pedal slot, which only holds Z-Pedal effects (or ZP-None), and Z-Pedal effects only fit there. This was verified on the pedal; all 297 patches in a backup have exactly one such slot.
@@ -28,13 +33,6 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
   - New **Latency** setting in the sidebar: Low (32), Normal (64) or Safe (128), for busy or older Macs.
   - Reserve added after an underrun now shrinks back after a calm minute, instead of staying for the rest of the session.
 - **Honest delay readout:** the monitor's delay now includes the drivers' own latency and safety offsets. These added about 5 ms that weren't shown before.
-
-### Added
-- `g5tool latency`: buffer ranges, hidden driver latency and supported sample rates for the G5 and each output.
-- `g5tool monitor <sec> [output] [buffer] [margin] [gainDb]`, for latency and limiter experiments.
-- **Bank files (AI Sound Patcher, first step):** `g5tool apply <bank.json> <bank>` writes a 3-patch bank described by effect and knob names. It checks everything against the catalog and the Z-Pedal rule first (`--dry-run` checks only), takes a full backup, and verifies each patch by reading it back. Example: `banks/stars-switchfoot.json`.
-- `g5tool catalogref` (the effect reference the AI gets) and `g5tool describe <backup> <bank>` (a bank in the bank-file format).
-- `g5tool show <slot>` (a patch's knobs as the pedal displays them), `g5tool verifyall <backup>`, and `g5tool alloff <slot>` (all effects off, for noise tests; the patch is saved first).
 
 ## [0.2.1] - 2026-11-17
 
@@ -88,6 +86,7 @@ All notable changes to G5 Editor. Versions follow [semantic versioning](https://
 - Monitor: plays the G5's USB audio through any Mac output, with sample-rate conversion and drift correction (about 13 ms).
 - `g5tool` developer CLI, catalog generators and protocol documentation.
 
+[0.2.2]: https://github.com/andik6/G5Editor/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/andik6/G5Editor/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/andik6/G5Editor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/andik6/G5Editor/releases/tag/v0.1.0

@@ -1,6 +1,6 @@
 # G5 Editor
 
-Version 0.2.1 · see [CHANGELOG.md](CHANGELOG.md)
+Version 0.2.2 · see [CHANGELOG.md](CHANGELOG.md)
 
 **A Zoom G5 editor for modern macOS: a free, open-source alternative to Zoom Edit&Share.** It runs on macOS 14 Sonoma, 15 Sequoia and later, on Apple Silicon (M1–M4) and Intel Macs. It is for the original **ZOOM G5** guitar multi-effects pedal, not the G5n.
 
